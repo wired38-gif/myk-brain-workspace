@@ -1,0 +1,22 @@
+{
+  "name": "myk-brain-workspace",
+  "version": "1.5.0",
+  "description": "Zero-dependency local workspace server for MYK's Brain",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "tunnel": "cloudflared tunnel run --token eyJhIjoiMzRhOGU1Yjk0NzJlYzdmZjNiMzUzNmU2YmE0MWU1NTAiLCJ0IjoiMGQ1MmQ4ZTktOGE2ZS00MTE2LWI4OTQtMDA4ZTIxZDYyZjJkIiwicyI6Ik9HSXlNMll3T0dFdFpXTTVOeTAwTmpVM0xXRmhPVGt0TkdGbVltSTBaakpoTTJaaiJ9",
+    "start-with-tunnel": "node server.js & npm run tunnel"
+  },
+  "keywords": [
+    "ai",
+    "workspace",
+    "proxy",
+    "ollama",
+    "myk"
+  ],
+  "author": "Mike Andrews",
+  "license": "MIT",
+  "dependencies": {}
+}

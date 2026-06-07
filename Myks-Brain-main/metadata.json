@@ -1,0 +1,6 @@
+{
+  "name": "MYK's Brain",
+  "description": "Multi-supplier neural workspace connecting OpenAI, DeepSeek, Anthropic, local cores, and in-app account syncing on steroids.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

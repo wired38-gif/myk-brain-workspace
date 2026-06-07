@@ -1,0 +1,19 @@
+{
+  "name": "myks-brain-desktop",
+  "version": "1.0.0",
+  "description": "Desktop web app edition of MYK's Brain multi-supplier neural workspace.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "ai",
+    "desktop-app",
+    "multi-supplier",
+    "ollama"
+  ],
+  "author": "Mike Andrews",
+  "license": "MIT",
+  "dependencies": {}
+}

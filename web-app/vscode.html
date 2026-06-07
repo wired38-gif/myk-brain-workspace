@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VS Code Editor - MYK Brain</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        .header {
+            background: #323233;
+            padding: 10px 15px;
+            border-bottom: 1px solid #3e3e42;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            z-index: 100;
+        }
+        .header h1 {
+            font-size: 14px;
+            font-weight: 600;
+            flex: 1;
+        }
+        .header button {
+            background: #007acc;
+            color: white;
+            border: none;
+            padding: 5px 12px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+        .header button:hover { background: #005a9e; }
+        
+        .container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        .sidebar {
+            width: 250px;
+            background: #252526;
+            border-right: 1px solid #3e3e42;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .sidebar-tabs {
+            display: flex;
+            border-bottom: 1px solid #3e3e42;
+        }
+        
+        .sidebar-tab {
+            flex: 1;
+            padding: 10px;
+            background: #2d2d30;
+            border: none;
+            color: #858585;
+            cursor: pointer;
+            font-size: 12px;
+            border-bottom: 2px solid transparent;
+        }
+        
+        .sidebar-tab.active {
+            color: white;
+            border-bottom-color: #007acc;
+            background: #252526;
+        }
+        
+        .sidebar-content {
+            display: none;
+            padding: 10px;
+            overflow-y: auto;
+            flex: 1;
+        }
+        
+        .sidebar-content.active {
+            display: block;
+        }
+        
+        .file-tree, .file-list {
+            font-size: 12px;
+            line-height: 1.6;
+        }
+        
+        .file-item {
+            padding: 5px 10px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            border-radius: 3px;
+            color: #cccccc;
+        }
+        
+        .file-item:hover {
+            background: #3e3e42;
+        }
+        
+        .file-item.selected {
+            background: #007acc;
+            color: white;
+        }
+        
+        .file-icon {
+            width: 16px;
+            height: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+        }
+        
+        .editor-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: #1e1e1e;
+            overflow: hidden;
+        }
+        
+        .editor-tabs {
+            display: flex;
+            background: #252526;
+            border-bottom: 1px solid #3e3e42;
+            overflow-x: auto;
+        }
+        
+        .editor-tab {
+            padding: 10px 15px;
+            background: #2d2d30;
+            border: none;
+            color: #858585;
+            cursor: pointer;
+            font-size: 12px;
+            border-right: 1px solid #3e3e42;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+        
+        .editor-tab.active {
+            background: #1e1e1e;
+            color: white;
+            border-bottom: 2px solid #007acc;
+        }
+        
+        .editor-content {
+            display: none;
+            flex: 1;
+            overflow: hidden;
+            flex-direction: column;
+        }
+        
+        .editor-content.active {
+            display: flex;
+        }
+        
+        .code-editor {
+            flex: 1;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            border: none;
+            padding: 15px;
+            font-family: 'Monaco', monospace;
+            font-size: 13px;
+            line-height: 1.6;
+            resize: none;
+            overflow: auto;
+        }
+        
+        .terminal-area {
+            height: 150px;
+            background: #1e1e1e;
+            border-top: 1px solid #3e3e42;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .terminal-header {
+            background: #323233;
+            padding: 8px 12px;
+            border-bottom: 1px solid #3e3e42;
+            font-size: 11px;
+            color: #cccccc;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .terminal-output {
+            flex: 1;
+            background: #1e1e1e;
+            color: #0dff00;
+            overflow-y: auto;
+            padding: 10px;
+            font-size: 12px;
+            font-family: monospace;
+            line-height: 1.5;
+        }
+        
+        .terminal-input {
+            display: flex;
+            background: #1e1e1e;
+            border-top: 1px solid #3e3e42;
+            padding: 8px 10px;
+        }
+        
+        .terminal-input input {
+            flex: 1;
+            background: #1e1e1e;
+            border: none;
+            color: #0dff00;
+            font-family: monospace;
+            font-size: 12px;
+            outline: none;
+        }
+        
+        .terminal-input input::placeholder {
+            color: #666;
+        }
+        
+        .split-pane {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>📝 VS Code Editor - MYK Brain</h1>
+        <button onclick="goBack()">← Back to Dashboard</button>
+    </div>
+    
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" onclick="switchSidebarTab('files')">📂 Files</button>
+                <button class="sidebar-tab" onclick="switchSidebarTab('search')">🔍 Search</button>
+            </div>
+            
+            <div id="files-panel" class="sidebar-content active">
+                <div class="file-tree" id="fileTree">
+                    <div class="file-item" onclick="selectFile('index.html', 'html')">
+                        <span class="file-icon">📄</span>
+                        <span>index.html</span>
+                    </div>
+                    <div class="file-item" onclick="selectFile('server.js', 'js')">
+                        <span class="file-icon">⚙️</span>
+                        <span>server.js</span>
+                    </div>
+                    <div class="file-item" onclick="selectFile('package.json', 'json')">
+                        <span class="file-icon">📦</span>
+                        <span>package.json</span>
+                    </div>
+                    <div class="file-item" onclick="selectFile('.env', 'env')">
+                        <span class="file-icon">🔐</span>
+                        <span>.env</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="search-panel" class="sidebar-content">
+                <input type="text" placeholder="Search files..." style="width: 100%; padding: 8px; background: #3e3e42; color: white; border: none; border-radius: 3px; margin-bottom: 10px;">
+                <div id="searchResults" style="font-size: 12px; color: #999;"></div>
+            </div>
+        </div>
+        
+        <!-- Editor Area -->
+        <div class="editor-area">
+            <div class="editor-tabs" id="editorTabs"></div>
+            
+            <div class="split-pane">
+                <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                    <div id="editorsContainer"></div>
+                </div>
+                
+                <!-- Terminal -->
+                <div class="terminal-area">
+                    <div class="terminal-header">
+                        Terminal
+                        <button style="background: none; border: none; color: #999; cursor: pointer; font-size: 11px;" onclick="clearTerminal()">Clear</button>
+                    </div>
+                    <div class="terminal-output" id="terminalOutput">
+                        <div>$ Welcome to MYK Brain Terminal</div>
+                        <div>$ Type a command to execute</div>
+                    </div>
+                    <div class="terminal-input">
+                        <span style="color: #0dff00; margin-right: 5px;">$</span>
+                        <input type="text" id="terminalInput" placeholder="Enter command..." onkeypress="handleTerminalInput(event)">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const files = {};
+        let activeFile = null;
+
+        function switchSidebarTab(tab) {
+            document.querySelectorAll('.sidebar-tab').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.sidebar-content').forEach(el => el.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(`${tab}-panel`).classList.add('active');
+        }
+
+        function selectFile(name, type) {
+            if (!files[name]) {
+                loadFile(name, type);
+            }
+            openFile(name);
+        }
+
+        function loadFile(name, type) {
+            files[name] = { name, type, content: `// Loading ${name}...`, modified: false };
+            
+            fetch(`/${name}`)
+                .then(r => r.text())
+                .then(content => {
+                    files[name].content = content;
+                    if (activeFile === name) {
+                        updateEditor();
+                    }
+                })
+                .catch(e => {
+                    files[name].content = `// Error loading ${name}: ${e.message}`;
+                });
+        }
+
+        function openFile(name) {
+            activeFile = name;
+            updateEditor();
+            updateTabs();
+        }
+
+        function updateEditor() {
+            const file = files[activeFile];
+            if (!file) return;
+
+            const container = document.getElementById('editorsContainer');
+            container.innerHTML = `
+                <textarea class="code-editor" id="editor-${activeFile}" placeholder="No file open...">${file.content}</textarea>
+            `;
+            
+            const editor = document.getElementById(`editor-${activeFile}`);
+            editor.addEventListener('input', () => {
+                file.modified = true;
+                updateTabs();
+            });
+        }
+
+        function updateTabs() {
+            const tabs = document.getElementById('editorTabs');
+            tabs.innerHTML = Object.keys(files)
+                .map(name => `
+                    <div class="editor-tab ${activeFile === name ? 'active' : ''}" onclick="openFile('${name}')">
+                        ${files[name].modified ? '● ' : ''}${name}
+                        <span onclick="closeFile('${name}', event)" style="cursor: pointer; margin-left: 5px;">✕</span>
+                    </div>
+                `)
+                .join('');
+        }
+
+        function closeFile(name, e) {
+            e.stopPropagation();
+            delete files[name];
+            if (activeFile === name) {
+                activeFile = Object.keys(files)[0] || null;
+                if (activeFile) updateEditor();
+                else document.getElementById('editorsContainer').innerHTML = '<div style="padding: 20px; color: #999;">No file open</div>';
+            }
+            updateTabs();
+        }
+
+        function handleTerminalInput(e) {
+            if (e.key !== 'Enter') return;
+            
+            const input = e.target;
+            const command = input.value.trim();
+            const output = document.getElementById('terminalOutput');
+            
+            input.value = '';
+            
+            if (!command) return;
+            
+            output.innerHTML += `<div>$ ${command}</div>`;
+            
+            fetch('/api/terminal', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ command })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.stdout) output.innerHTML += `<div>${data.stdout.substring(0, 500)}</div>`;
+                if (data.stderr) output.innerHTML += `<div style="color: #ff6b6b;">${data.stderr.substring(0, 500)}</div>`;
+                if (!data.success && !data.stderr) output.innerHTML += `<div style="color: #ff6b6b;">Command failed</div>`;
+                output.scrollTop = output.scrollHeight;
+            })
+            .catch(e => {
+                output.innerHTML += `<div style="color: #ff6b6b;">Error: ${e.message}</div>`;
+                output.scrollTop = output.scrollHeight;
+            });
+        }
+
+        function clearTerminal() {
+            document.getElementById('terminalOutput').innerHTML = '<div>$ Cleared</div>';
+        }
+
+        function goBack() {
+            window.location.href = '/web-app/index.html';
+        }
+
+        // Load initial file
+        selectFile('index.html', 'html');
+    </script>
+</body>
+</html>
