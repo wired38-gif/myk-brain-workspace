@@ -63,11 +63,46 @@ const resolveSessionFromRequest = require('./session').resolveSessionFromRequest
   || require('./session');
 ```
 
+## Recover from interrupted restart
+
+If restart was interrupted, askmyk.io often shows **Cloudflare 530** (origin down) instead of the old 500 stack trace.
+
+On your Mac:
+
+```bash
+cd ~/Projects/myks-app
+bash scripts/restart-gateway.sh
+```
+
+Manual recovery if the script is not present yet:
+
+```bash
+cd ~/Projects/myks-app
+
+# Stop anything half-dead from the interrupted restart
+pkill -f "node.*myks-app" || true
+pkill -f "cloudflared.*tunnel" || true
+sleep 1
+
+# Start gateway
+npm start > /tmp/myks-app-gateway.log 2>&1 &
+
+# Start tunnel (use your normal command — examples):
+# cloudflared tunnel run --token YOUR_TOKEN
+# npm run tunnel
+
+# Verify locally first
+curl -sI http://127.0.0.1:3000/api/status | head -1
+curl -sI https://askmyk.io/ask | head -1
+```
+
+If local health works but askmyk.io is still 530, the **tunnel URL rotated** — update Cloudflare / GoDaddy `BRAIN_PROXY_TARGET` and restart cloudflared.
+
 ## Verify
 
 ```bash
 node myks-app/scripts/test-session-export.js
-curl -sI https://askmyk.io/ask | head -1    # expect 200, not 500
+curl -sI https://askmyk.io/ask | head -1    # expect 200, not 500/530
 curl -s https://askmyk.io/api/status          # expect 401 JSON, not HTML stack trace
 ```
 
