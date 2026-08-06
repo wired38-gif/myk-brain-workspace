@@ -23,6 +23,11 @@ try {
     console.warn('[ENV] No .env file loaded:', e.message);
 }
 
+// Admin portal bootstrap: seed master admin on first run
+const { seedMasterAdmin } = require('./admin/seed');
+const { adminRouter } = require('./admin/index');
+seedMasterAdmin().catch(err => console.error('[SEED] Error:', err.message));
+
 const PORT = process.env.PORT || 3000;
 
 const CONTENT_TYPES = {
@@ -36,7 +41,7 @@ const CONTENT_TYPES = {
     '.ico': 'image/x-icon'
 };
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
@@ -149,6 +154,39 @@ const server = http.createServer((req, res) => {
             } catch (err) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({ error: 'Malformed proxy payload' }));
+            }
+        });
+        return;
+    }
+
+    // ── Admin API Routes (/api/admin/*) ────────────────────────────────────────
+    if (req.url.startsWith('/api/admin/')) {
+        const handled = await adminRouter(req, res);
+        if (handled !== false) return;
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Admin route not found' }));
+        return;
+    }
+
+    // ── Admin Portal HTML Pages ─────────────────────────────────────────────────
+    // /admin/login → public/admin/login.html
+    // /admin/operations → public/admin/operations.html
+    // /admin/setup-wizard → public/admin/setup-wizard.html
+    const adminPageMap = {
+        '/admin/login':        path.join(__dirname, 'public', 'admin', 'login.html'),
+        '/admin/operations':   path.join(__dirname, 'public', 'admin', 'operations.html'),
+        '/admin/setup-wizard': path.join(__dirname, 'public', 'admin', 'setup-wizard.html'),
+        '/admin':              path.join(__dirname, 'public', 'admin', 'login.html'),
+    };
+    const adminPage = adminPageMap[req.url.split('?')[0]];
+    if (adminPage) {
+        fs.readFile(adminPage, (err, content) => {
+            if (err) {
+                res.writeHead(404, { 'Content-Type': 'text/plain' });
+                res.end('Admin page not found');
+            } else {
+                res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(content);
             }
         });
         return;
