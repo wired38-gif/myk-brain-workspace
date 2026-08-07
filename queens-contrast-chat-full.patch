@@ -1,0 +1,2736 @@
+From 2f699e51ff2ef7bf8cd5b1e391fd606e66e6c283 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 7 Aug 2026 19:06:29 +0000
+Subject: [PATCH 1/3] feat: rewrite admin portal with Operations and Setup
+ modes
+
+Complete self-contained admin portal matching Queens brand:
+- Operations dashboard (stats, orders, customers, inquiries, products, admins)
+- 7-step Setup wizard with progress bar and AI tips
+- Auth via qcc_admin_token and existing API endpoints
+- Mobile responsive sidebar and modals
+---
+ admin/index.html | 1493 +++++++++++++++++++++++++---------------------
+ 1 file changed, 811 insertions(+), 682 deletions(-)
+
+diff --git a/admin/index.html b/admin/index.html
+index 5ec354a..a024fcd 100644
+--- a/admin/index.html
++++ b/admin/index.html
+@@ -1,887 +1,1016 @@
+ <!DOCTYPE html>
+-<html lang="en" data-theme="dark">
++<html lang="en">
+ <head>
+   <meta charset="UTF-8"/>
+   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+-  <title>Queens Admin Portal</title>
++  <title>Queens Custom Creations — Admin Portal</title>
+   <link rel="preconnect" href="https://api.fontshare.com"/>
+   <link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=clash-display@700,600,500&f[]=satoshi@400,500,700&display=swap"/>
+   <style>
+     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+-
+     :root {
+-      --pink: #FF1A8C;
+-      --pink-dim: rgba(255,26,140,0.12);
+-      --pink-glow: rgba(255,26,140,0.3);
+-      --bg: #0d0d10;
+-      --surface: #141418;
+-      --surface-2: #1c1c22;
+-      --border: rgba(255,255,255,0.07);
+-      --text: #f0f0f5;
+-      --text-2: rgba(240,240,245,0.65);
+-      --text-3: rgba(240,240,245,0.38);
+-      --green: #22c55e;
+-      --amber: #f59e0b;
+-      --red: #ef4444;
+-      --blue: #3b82f6;
+-      --font-display: 'Clash Display', sans-serif;
+-      --font-body: 'Satoshi', sans-serif;
+-      --radius: 14px;
+-      --radius-sm: 8px;
+-    }
+-
+-    body {
+-      font-family: var(--font-body);
+-      background: var(--bg);
+-      color: var(--text);
+-      min-height: 100vh;
+-      display: flex;
++      --pink: #FF1A8C; --pink-dim: rgba(255,26,140,0.12); --pink-glow: rgba(255,26,140,0.3);
++      --bg: #0d0d10; --surface: #141418; --surface-2: #1c1c22;
++      --border: rgba(255,255,255,0.07); --text: #f0f0f5;
++      --text-2: rgba(240,240,245,0.65); --text-3: rgba(240,240,245,0.38);
++      --green: #22c55e; --amber: #f59e0b; --red: #ef4444; --blue: #3b82f6;
++      --font-display: 'Clash Display', sans-serif; --font-body: 'Satoshi', sans-serif;
++      --radius: 14px; --radius-sm: 8px;
++    }
++    body { font-family: var(--font-body); background: var(--bg); color: var(--text); min-height: 100vh; }
++    body.authed { display: flex; }
++    .hidden { display: none !important; }
++
++    /* Login */
++    #login-screen { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 9999; }
++    .login-card { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 40px; width: 100%; max-width: 380px; text-align: center; }
++    .login-card .crown { font-size: 40px; margin-bottom: 12px; display: block; }
++    .login-card h2 { font-family: var(--font-display); font-size: 1.5rem; margin-bottom: 4px; }
++    .login-card p { font-size: 0.85rem; color: var(--text-2); margin-bottom: 28px; }
++    .form-field { margin-bottom: 16px; text-align: left; }
++    .form-field label { display: block; font-size: 0.75rem; color: var(--text-2); margin-bottom: 6px; letter-spacing: 0.04em; text-transform: uppercase; }
++    .form-field input, .form-field select, .form-field textarea {
++      width: 100%; padding: 11px 14px; border-radius: 10px; border: 1px solid var(--border);
++      background: var(--surface-2); color: var(--text); font-family: var(--font-body); font-size: 0.92rem; outline: none;
+     }
++    .form-field input:focus, .form-field select:focus, .form-field textarea:focus { border-color: var(--pink); }
++    .form-field textarea { min-height: 100px; resize: vertical; }
++    .btn-pink { padding: 12px 20px; border-radius: 999px; background: var(--pink); color: #fff; font-family: var(--font-display); font-size: 0.95rem; font-weight: 600; border: none; cursor: pointer; transition: opacity 0.2s; }
++    .btn-pink:hover { opacity: 0.88; }
++    .btn-pink.full { width: 100%; }
++    .btn-ghost { padding: 10px 16px; border-radius: 999px; background: transparent; color: var(--text-2); border: 1px solid var(--border); font-family: var(--font-body); font-size: 0.85rem; cursor: pointer; }
++    .btn-ghost:hover { border-color: var(--pink); color: var(--text); }
++    .btn-sm { padding: 8px 16px; border-radius: 8px; background: var(--pink); color: #fff; border: none; font-family: var(--font-body); font-size: 0.83rem; font-weight: 600; cursor: pointer; }
++    .btn-sm:hover { opacity: 0.85; }
++    .btn-danger { background: var(--red); }
++    .login-error { color: var(--red); font-size: 0.82rem; margin-top: 10px; min-height: 18px; }
+ 
+-    /* ── Sidebar ─────────────────────────────────────────────── */
+-    .sidebar {
+-      width: 240px;
+-      background: var(--surface);
+-      border-right: 1px solid var(--border);
+-      display: flex;
+-      flex-direction: column;
+-      position: fixed;
+-      left: 0; top: 0; bottom: 0;
+-      z-index: 100;
+-      transition: transform 0.3s;
+-    }
+-    .sidebar-brand {
+-      padding: 24px 20px 20px;
+-      border-bottom: 1px solid var(--border);
+-    }
++    /* Sidebar */
++    .sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; transition: transform 0.3s; }
++    .sidebar-brand { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
+     .sidebar-brand .crown { font-size: 24px; margin-bottom: 6px; display: block; }
+-    .sidebar-brand h1 {
+-      font-family: var(--font-display);
+-      font-size: 1.05rem;
+-      color: var(--text);
+-      line-height: 1.2;
+-    }
++    .sidebar-brand h1 { font-family: var(--font-display); font-size: 1.05rem; line-height: 1.2; }
+     .sidebar-brand p { font-size: 0.7rem; color: var(--text-3); margin-top: 2px; letter-spacing: 0.06em; text-transform: uppercase; }
+-    .sidebar-nav { padding: 16px 12px; flex: 1; }
+-    .nav-item {
+-      display: flex;
+-      align-items: center;
+-      gap: 10px;
+-      padding: 10px 12px;
+-      border-radius: var(--radius-sm);
+-      cursor: pointer;
+-      color: var(--text-2);
+-      font-size: 0.88rem;
+-      font-weight: 500;
+-      transition: all 0.15s;
+-      border: none;
+-      background: none;
+-      width: 100%;
+-      text-align: left;
+-      text-decoration: none;
+-    }
++    .sidebar-nav { padding: 16px 12px; flex: 1; overflow-y: auto; }
++    .nav-item { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm); cursor: pointer; color: var(--text-2); font-size: 0.88rem; font-weight: 500; transition: all 0.15s; border: none; background: none; width: 100%; text-align: left; }
+     .nav-item:hover { background: var(--pink-dim); color: var(--text); }
+     .nav-item.active { background: var(--pink-dim); color: var(--pink); }
+     .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+     .nav-section { font-size: 0.65rem; color: var(--text-3); letter-spacing: 0.1em; text-transform: uppercase; padding: 12px 12px 4px; }
+-    .sidebar-footer {
+-      padding: 16px;
+-      border-top: 1px solid var(--border);
+-    }
+-    .logout-btn {
+-      width: 100%;
+-      padding: 9px 14px;
+-      border-radius: var(--radius-sm);
+-      border: 1px solid var(--border);
+-      background: none;
+-      color: var(--text-2);
+-      font-size: 0.83rem;
+-      cursor: pointer;
+-      font-family: var(--font-body);
+-      transition: all 0.15s;
+-    }
++    .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
++    .logout-btn { width: 100%; padding: 9px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: none; color: var(--text-2); font-size: 0.83rem; cursor: pointer; font-family: var(--font-body); }
+     .logout-btn:hover { border-color: var(--red); color: var(--red); }
+ 
+-    /* ── Main ────────────────────────────────────────────────── */
+-    .main {
+-      margin-left: 240px;
+-      flex: 1;
+-      display: flex;
+-      flex-direction: column;
+-      min-height: 100vh;
+-    }
+-    .topbar {
+-      padding: 20px 28px;
+-      border-bottom: 1px solid var(--border);
+-      background: var(--surface);
+-      display: flex;
+-      align-items: center;
+-      justify-content: space-between;
+-      position: sticky;
+-      top: 0;
+-      z-index: 10;
+-    }
++    /* Main */
++    .main { margin-left: 240px; flex: 1; display: flex; flex-direction: column; min-height: 100vh; min-width: 0; }
++    .main.setup-mode { margin-left: 0; }
++    .topbar { padding: 16px 28px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; align-items: center; justify-content: space-between; gap: 16px; position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
++    .topbar-left { display: flex; align-items: center; gap: 12px; }
+     .topbar-title { font-family: var(--font-display); font-size: 1.25rem; }
+     .topbar-user { font-size: 0.82rem; color: var(--text-2); }
+     .topbar-user strong { color: var(--pink); }
+-    .content { padding: 28px; }
+-
+-    /* ── Login Screen ────────────────────────────────────────── */
+-    #login-screen {
+-      position: fixed;
+-      inset: 0;
+-      background: var(--bg);
+-      display: flex;
+-      align-items: center;
+-      justify-content: center;
+-      z-index: 9999;
+-    }
+-    .login-card {
+-      background: var(--surface);
+-      border: 1px solid var(--border);
+-      border-radius: 20px;
+-      padding: 40px;
+-      width: 100%;
+-      max-width: 380px;
+-      text-align: center;
+-    }
+-    .login-card .crown { font-size: 40px; margin-bottom: 12px; display: block; }
+-    .login-card h2 { font-family: var(--font-display); font-size: 1.5rem; margin-bottom: 4px; }
+-    .login-card p { font-size: 0.85rem; color: var(--text-2); margin-bottom: 28px; }
+-    .form-field { margin-bottom: 16px; text-align: left; }
+-    .form-field label { display: block; font-size: 0.75rem; color: var(--text-2); margin-bottom: 6px; letter-spacing: 0.04em; text-transform: uppercase; }
+-    .form-field input {
+-      width: 100%;
+-      padding: 11px 14px;
+-      border-radius: 10px;
+-      border: 1px solid var(--border);
+-      background: var(--surface-2);
+-      color: var(--text);
+-      font-family: var(--font-body);
+-      font-size: 0.92rem;
+-      outline: none;
+-      transition: border-color 0.2s;
+-    }
+-    .form-field input:focus { border-color: var(--pink); }
+-    .btn-pink {
+-      width: 100%;
+-      padding: 12px;
+-      border-radius: 999px;
+-      background: var(--pink);
+-      color: #fff;
+-      font-family: var(--font-display);
+-      font-size: 0.95rem;
+-      font-weight: 600;
+-      border: none;
+-      cursor: pointer;
+-      transition: opacity 0.2s;
+-    }
+-    .btn-pink:hover { opacity: 0.88; }
+-    .login-error { color: var(--red); font-size: 0.82rem; margin-top: 10px; min-height: 18px; }
+-
+-    /* ── Stat Cards ──────────────────────────────────────────── */
+-    .stats-grid {
+-      display: grid;
+-      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+-      gap: 16px;
+-      margin-bottom: 28px;
+-    }
+-    .stat-card {
+-      background: var(--surface);
+-      border: 1px solid var(--border);
+-      border-radius: var(--radius);
+-      padding: 20px;
+-    }
+-    .stat-card .stat-label { font-size: 0.72rem; color: var(--text-3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
+-    .stat-card .stat-val { font-family: var(--font-display); font-size: 2rem; font-weight: 700; }
+-    .stat-card .stat-sub { font-size: 0.75rem; color: var(--text-3); margin-top: 4px; }
++    .content { padding: 28px; flex: 1; }
++
++    /* Mode toggle */
++    .mode-toggle { display: flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
++    .mode-btn { padding: 8px 18px; border-radius: 999px; border: none; background: none; color: var(--text-2); font-family: var(--font-display); font-size: 0.82rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
++    .mode-btn.active { background: var(--pink); color: #fff; }
++    .mode-btn:not(.active):hover { color: var(--text); }
++
++    /* Stats */
++    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; margin-bottom: 28px; }
++    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; }
++    .stat-label { font-size: 0.72rem; color: var(--text-3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 8px; }
++    .stat-val { font-family: var(--font-display); font-size: 1.75rem; font-weight: 700; }
++    .stat-sub { font-size: 0.75rem; color: var(--text-3); margin-top: 4px; }
+     .stat-card.pink .stat-val { color: var(--pink); }
+     .stat-card.green .stat-val { color: var(--green); }
+     .stat-card.amber .stat-val { color: var(--amber); }
+ 
+-    /* ── Table ───────────────────────────────────────────────── */
+-    .card {
+-      background: var(--surface);
+-      border: 1px solid var(--border);
+-      border-radius: var(--radius);
+-      overflow: hidden;
+-      margin-bottom: 24px;
+-    }
+-    .card-header {
+-      padding: 18px 20px;
+-      border-bottom: 1px solid var(--border);
+-      display: flex;
+-      align-items: center;
+-      justify-content: space-between;
+-      gap: 12px;
+-      flex-wrap: wrap;
+-    }
++    /* Cards & tables */
++    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 24px; }
++    .card-header { padding: 18px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+     .card-title { font-family: var(--font-display); font-size: 1rem; }
+-    .search-box {
+-      padding: 8px 12px;
+-      border-radius: 8px;
+-      border: 1px solid var(--border);
+-      background: var(--surface-2);
+-      color: var(--text);
+-      font-size: 0.83rem;
+-      font-family: var(--font-body);
+-      outline: none;
+-      width: 220px;
+-    }
++    .card-body { padding: 20px; }
++    .search-box { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-size: 0.83rem; font-family: var(--font-body); outline: none; width: 220px; }
+     .search-box:focus { border-color: var(--pink); }
+     .filter-tabs { display: flex; gap: 6px; flex-wrap: wrap; }
+-    .filter-tab {
+-      padding: 5px 12px;
+-      border-radius: 999px;
+-      border: 1px solid var(--border);
+-      background: none;
+-      color: var(--text-2);
+-      font-size: 0.75rem;
+-      cursor: pointer;
+-      font-family: var(--font-body);
+-      transition: all 0.15s;
+-    }
++    .filter-tab { padding: 5px 12px; border-radius: 999px; border: 1px solid var(--border); background: none; color: var(--text-2); font-size: 0.75rem; cursor: pointer; font-family: var(--font-body); }
+     .filter-tab.active { background: var(--pink-dim); border-color: var(--pink); color: var(--pink); }
+-    .filter-tab:hover:not(.active) { border-color: rgba(255,255,255,0.2); color: var(--text); }
+-
+     table { width: 100%; border-collapse: collapse; }
+-    thead th {
+-      padding: 12px 16px;
+-      text-align: left;
+-      font-size: 0.7rem;
+-      font-weight: 600;
+-      color: var(--text-3);
+-      letter-spacing: 0.08em;
+-      text-transform: uppercase;
+-      border-bottom: 1px solid var(--border);
+-    }
+-    tbody tr {
+-      border-bottom: 1px solid var(--border);
+-      cursor: pointer;
+-      transition: background 0.12s;
+-    }
+-    tbody tr:last-child { border-bottom: none; }
+-    tbody tr:hover { background: rgba(255,255,255,0.025); }
++    thead th { padding: 12px 16px; text-align: left; font-size: 0.7rem; font-weight: 600; color: var(--text-3); letter-spacing: 0.08em; text-transform: uppercase; border-bottom: 1px solid var(--border); }
++    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.12s; }
++    tbody tr.clickable { cursor: pointer; }
++    tbody tr.clickable:hover { background: rgba(255,255,255,0.025); }
+     tbody td { padding: 14px 16px; font-size: 0.85rem; }
+     .td-order { font-family: monospace; font-size: 0.78rem; color: var(--text-2); }
+     .td-customer { font-weight: 500; }
+     .td-email { color: var(--text-2); font-size: 0.8rem; }
+-    .td-amount { font-weight: 700; color: var(--text); }
++    .td-amount { font-weight: 700; }
+     .td-date { color: var(--text-3); font-size: 0.78rem; }
+     .empty-state { padding: 48px; text-align: center; color: var(--text-3); }
+ 
+-    /* ── Badges ──────────────────────────────────────────────── */
+-    .badge {
+-      display: inline-block;
+-      padding: 3px 10px;
+-      border-radius: 999px;
+-      font-size: 0.7rem;
+-      font-weight: 600;
+-      letter-spacing: 0.03em;
+-    }
+-    .badge-pending  { background: rgba(245,158,11,0.15); color: var(--amber); }
+-    .badge-confirmed{ background: rgba(59,130,246,0.15); color: var(--blue); }
++    /* Badges */
++    .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
++    .badge-pending, .badge-new { background: rgba(245,158,11,0.15); color: var(--amber); }
++    .badge-confirmed { background: rgba(59,130,246,0.15); color: var(--blue); }
+     .badge-in_progress { background: rgba(255,26,140,0.15); color: var(--pink); }
+-    .badge-shipped  { background: rgba(168,85,247,0.15); color: #a855f7; }
+-    .badge-delivered{ background: rgba(34,197,94,0.15); color: var(--green); }
+-    .badge-cancelled{ background: rgba(239,68,68,0.15); color: var(--red); }
+-    .badge-paid     { background: rgba(34,197,94,0.15); color: var(--green); }
+-    .badge-unpaid   { background: rgba(239,68,68,0.15); color: var(--red); }
+-
+-    /* ── Order Detail Modal ──────────────────────────────────── */
+-    .modal-overlay {
+-      position: fixed;
+-      inset: 0;
+-      background: rgba(0,0,0,0.7);
+-      z-index: 500;
+-      display: flex;
+-      align-items: center;
+-      justify-content: center;
+-      padding: 20px;
+-    }
+-    .modal-overlay.hidden { display: none; }
+-    .modal {
+-      background: var(--surface);
+-      border: 1px solid var(--border);
+-      border-radius: 20px;
+-      width: 100%;
+-      max-width: 560px;
+-      max-height: 90vh;
+-      overflow-y: auto;
+-    }
+-    .modal-header {
+-      padding: 20px 24px;
+-      border-bottom: 1px solid var(--border);
+-      display: flex;
+-      align-items: center;
+-      justify-content: space-between;
+-    }
++    .badge-shipped { background: rgba(168,85,247,0.15); color: #a855f7; }
++    .badge-delivered, .badge-paid, .badge-active, .badge-replied { background: rgba(34,197,94,0.15); color: var(--green); }
++    .badge-cancelled, .badge-unpaid, .badge-out_of_stock { background: rgba(239,68,68,0.15); color: var(--red); }
++    .badge-draft, .badge-read { background: rgba(255,255,255,0.08); color: var(--text-2); }
++    .badge-admin { background: var(--pink-dim); color: var(--pink); }
++
++    /* Modal */
++    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 20px; }
++    .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
++    .modal.wide { max-width: 720px; }
++    .modal-header { padding: 20px 24px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+     .modal-header h3 { font-family: var(--font-display); font-size: 1.1rem; }
+-    .modal-close {
+-      width: 32px; height: 32px;
+-      border-radius: 50%;
+-      border: 1px solid var(--border);
+-      background: none;
+-      color: var(--text-2);
+-      cursor: pointer;
+-      font-size: 18px;
+-      display: flex; align-items: center; justify-content: center;
+-      transition: all 0.15s;
+-    }
++    .modal-close { width: 32px; height: 32px; border-radius: 50%; border: 1px solid var(--border); background: none; color: var(--text-2); cursor: pointer; font-size: 18px; display: flex; align-items: center; justify-content: center; }
+     .modal-close:hover { border-color: var(--red); color: var(--red); }
+     .modal-body { padding: 24px; }
+     .modal-section { margin-bottom: 20px; }
+     .modal-label { font-size: 0.7rem; color: var(--text-3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 6px; }
+-    .modal-value { font-size: 0.9rem; color: var(--text); }
++    .modal-value { font-size: 0.9rem; }
+     .modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+-    .item-row {
+-      display: flex;
+-      justify-content: space-between;
+-      padding: 8px 0;
+-      border-bottom: 1px solid var(--border);
+-      font-size: 0.85rem;
+-    }
+-    .item-row:last-child { border-bottom: none; }
+-    .status-select {
+-      padding: 8px 12px;
+-      border-radius: 8px;
+-      border: 1px solid var(--border);
+-      background: var(--surface-2);
+-      color: var(--text);
+-      font-family: var(--font-body);
+-      font-size: 0.85rem;
+-      outline: none;
+-      cursor: pointer;
+-      margin-right: 10px;
+-    }
+-    .status-select:focus { border-color: var(--pink); }
+-    .btn-sm {
+-      padding: 8px 16px;
+-      border-radius: 8px;
+-      background: var(--pink);
+-      color: #fff;
+-      border: none;
+-      font-family: var(--font-body);
+-      font-size: 0.83rem;
+-      font-weight: 600;
+-      cursor: pointer;
+-      transition: opacity 0.2s;
+-    }
+-    .btn-sm:hover { opacity: 0.85; }
++    .item-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.85rem; }
++    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; flex-wrap: wrap; }
++    .status-select { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); color: var(--text); font-family: var(--font-body); font-size: 0.85rem; outline: none; }
+ 
+-    /* ── Customers table ─────────────────────────────────────── */
++    /* Pages */
+     .page { display: none; }
+     .page.active { display: block; }
+ 
+-    /* ── Toast ───────────────────────────────────────────────── */
+-    #toast {
+-      position: fixed;
+-      bottom: 24px;
+-      right: 24px;
+-      background: var(--surface-2);
+-      border: 1px solid var(--border);
+-      border-radius: 12px;
+-      padding: 12px 20px;
+-      font-size: 0.85rem;
+-      z-index: 9999;
+-      transform: translateY(80px);
+-      opacity: 0;
+-      transition: all 0.3s;
+-    }
++    /* Setup wizard */
++    .setup-wrap { max-width: 1100px; margin: 0 auto; }
++    .progress-bar { display: flex; gap: 4px; margin-bottom: 28px; }
++    .progress-step { flex: 1; height: 4px; background: var(--surface-2); border-radius: 2px; transition: background 0.3s; }
++    .progress-step.done { background: var(--pink); }
++    .progress-step.current { background: var(--pink-glow); }
++    .wizard-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
++    .wizard-main { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; }
++    .wizard-main h2 { font-family: var(--font-display); font-size: 1.4rem; margin-bottom: 8px; }
++    .wizard-main .lead { color: var(--text-2); font-size: 0.9rem; margin-bottom: 24px; line-height: 1.5; }
++    .wizard-nav { display: flex; justify-content: space-between; margin-top: 28px; gap: 12px; flex-wrap: wrap; }
++    .ai-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
++    .ai-panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
++    .ai-panel-header span { font-size: 1.5rem; }
++    .ai-panel-header h3 { font-family: var(--font-display); font-size: 0.95rem; }
++    .ai-tip { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; padding: 14px; background: var(--pink-dim); border-radius: var(--radius-sm); border-left: 3px solid var(--pink); }
++    .integration-grid { display: grid; gap: 20px; }
++    .integration-block { padding: 20px; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border); }
++    .integration-block h4 { font-family: var(--font-display); font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
++    .connected-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); }
++    .connected-dot.on { background: var(--green); }
++    .step-labels { display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-3); margin-top: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
++    .complete-icon { font-size: 64px; text-align: center; margin: 20px 0; }
++    .product-quick-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
++    .product-quick-row input { padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 0.85rem; width: 90px; }
++    .product-quick-row .name { font-size: 0.88rem; font-weight: 500; }
++
++    /* Toast */
++    #toast { position: fixed; bottom: 24px; right: 24px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 12px 20px; font-size: 0.85rem; z-index: 9999; transform: translateY(80px); opacity: 0; transition: all 0.3s; }
+     #toast.show { transform: translateY(0); opacity: 1; }
+     #toast.success { border-color: var(--green); color: var(--green); }
+-    #toast.error   { border-color: var(--red);   color: var(--red); }
++    #toast.error { border-color: var(--red); color: var(--red); }
+ 
+-    /* ── Mobile sidebar ──────────────────────────────────────── */
++    /* Mobile */
+     .ham { display: none; background: none; border: none; color: var(--text); cursor: pointer; padding: 4px; }
++    .mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; }
++    .mob-overlay.show { display: block; }
++    @media (max-width: 900px) {
++      .wizard-layout { grid-template-columns: 1fr; }
++      .ai-panel { order: -1; }
++    }
+     @media (max-width: 768px) {
+       .sidebar { transform: translateX(-100%); }
+       .sidebar.open { transform: translateX(0); }
+       .main { margin-left: 0; }
+       .ham { display: block; }
+-      .mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; }
+-      .mob-overlay.show { display: block; }
+-      table { font-size: 0.78rem; }
++      .modal-grid { grid-template-columns: 1fr; }
++      .product-quick-row { grid-template-columns: 1fr 1fr; }
+       thead th:nth-child(3), tbody td:nth-child(3),
+       thead th:nth-child(5), tbody td:nth-child(5) { display: none; }
++      .step-labels { display: none; }
+     }
+-  </style>
++</style>
+ </head>
+ <body>
+ 
+-<!-- ── Login Screen ──────────────────────────────────────────────────────── -->
++<!-- Login -->
+ <div id="login-screen">
+   <div class="login-card">
+     <span class="crown">👑</span>
+     <h2>Admin Portal</h2>
+     <p>Queens Custom Creations</p>
+-    <div class="form-field">
+-      <label>Email</label>
+-      <input type="email" id="adm-email" value="wired4365@aol.com" autocomplete="username"/>
+-    </div>
+-    <div class="form-field">
+-      <label>Password</label>
+-      <input type="password" id="adm-pass" placeholder="••••••••" autocomplete="current-password"/>
+-    </div>
+-    <button class="btn-pink" id="adm-login-btn">Sign In to Admin</button>
++    <div class="form-field"><label>Email</label><input type="email" id="adm-email" placeholder="admin@example.com" autocomplete="username"/></div>
++    <div class="form-field"><label>Password</label><input type="password" id="adm-pass" placeholder="••••••••" autocomplete="current-password"/></div>
++    <button class="btn-pink full" id="adm-login-btn">Sign In to Admin</button>
+     <div class="login-error" id="login-error"></div>
+   </div>
+ </div>
+ 
+-<!-- ── Sidebar ────────────────────────────────────────────────────────────── -->
+ <div class="mob-overlay" id="mob-overlay"></div>
+ <aside class="sidebar" id="sidebar">
+   <div class="sidebar-brand">
+     <span class="crown">👑</span>
+-    <h1>Queens Admin</h1>
+-    <p>Custom Creations Portal</p>
++    <h1>Queens Custom Creations</h1>
++    <p>Admin Portal</p>
+   </div>
+-  <nav class="sidebar-nav">
+-    <div class="nav-section">Overview</div>
+-    <button class="nav-item active" data-page="dashboard">
+-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+-      Dashboard
+-    </button>
+-    <div class="nav-section">Orders</div>
+-    <button class="nav-item" data-page="orders">
+-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+-      All Orders
+-    </button>
+-    <button class="nav-item" data-page="orders" data-filter="pending">
+-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+-      Pending
+-    </button>
+-    <div class="nav-section">Customers</div>
+-    <button class="nav-item" data-page="customers">
+-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+-      Customers
+-    </button>
++  <nav class="sidebar-nav" id="ops-nav">
++    <div class="nav-section">Operations</div>
++    <button class="nav-item active" data-page="dashboard"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Dashboard</button>
++    <button class="nav-item" data-page="orders"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>Orders</button>
++    <button class="nav-item" data-page="customers"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>Customers</button>
++    <button class="nav-item" data-page="inquiries"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Inquiries</button>
++    <button class="nav-item" data-page="products"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Products</button>
++    <button class="nav-item" data-page="admin-users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Admin Users</button>
+   </nav>
+-  <div class="sidebar-footer">
+-    <button class="logout-btn" id="logout-btn">Sign Out</button>
+-  </div>
++  <div class="sidebar-footer"><button class="logout-btn" id="logout-btn">Sign Out</button></div>
+ </aside>
+ 
+-<!-- ── Main ───────────────────────────────────────────────────────────────── -->
+-<main class="main" id="main-app" style="display:none">
++<main class="main hidden" id="main-app">
+   <div class="topbar">
+-    <div style="display:flex;align-items:center;gap:12px">
+-      <button class="ham" id="ham">
+-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+-      </button>
++    <div class="topbar-left">
++      <button class="ham" id="ham" type="button"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+       <span class="topbar-title" id="page-title">Dashboard</span>
+     </div>
++    <div class="mode-toggle" id="mode-toggle">
++      <button type="button" class="mode-btn active" data-mode="operations">Operations</button>
++      <button type="button" class="mode-btn" data-mode="setup">Setup</button>
++    </div>
+     <div class="topbar-user">Signed in as <strong id="admin-name">Admin</strong></div>
+   </div>
+ 
+-  <div class="content">
+-
+-    <!-- Dashboard Page -->
++  <div class="content" id="ops-content">
+     <div class="page active" id="page-dashboard">
+-      <div class="stats-grid" id="stats-grid">
+-        <div class="stat-card pink">
+-          <div class="stat-label">Total Revenue</div>
+-          <div class="stat-val" id="stat-revenue">$0</div>
+-          <div class="stat-sub">Paid orders only</div>
+-        </div>
+-        <div class="stat-card">
+-          <div class="stat-label">Total Orders</div>
+-          <div class="stat-val" id="stat-orders">0</div>
+-          <div class="stat-sub">All time</div>
+-        </div>
+-        <div class="stat-card amber">
+-          <div class="stat-label">Pending</div>
+-          <div class="stat-val" id="stat-pending">0</div>
+-          <div class="stat-sub">Need attention</div>
+-        </div>
+-        <div class="stat-card green">
+-          <div class="stat-label">Customers</div>
+-          <div class="stat-val" id="stat-customers">0</div>
+-          <div class="stat-sub">Registered accounts</div>
+-        </div>
++      <div class="stats-grid">
++        <div class="stat-card pink"><div class="stat-label">Revenue</div><div class="stat-val" id="stat-revenue">$0</div><div class="stat-sub">Paid orders</div></div>
++        <div class="stat-card"><div class="stat-label">Orders</div><div class="stat-val" id="stat-orders">0</div><div class="stat-sub">All time</div></div>
++        <div class="stat-card amber"><div class="stat-label">Pending</div><div class="stat-val" id="stat-pending">0</div><div class="stat-sub">Need action</div></div>
++        <div class="stat-card green"><div class="stat-label">Customers</div><div class="stat-val" id="stat-customers">0</div><div class="stat-sub">Registered</div></div>
++        <div class="stat-card pink"><div class="stat-label">New Inquiries</div><div class="stat-val" id="stat-inquiries">0</div><div class="stat-sub">Unread</div></div>
++        <div class="stat-card"><div class="stat-label">Products</div><div class="stat-val" id="stat-products">0</div><div class="stat-sub">Active</div></div>
+       </div>
+-
+       <div class="card">
+-        <div class="card-header">
+-          <span class="card-title">Recent Orders</span>
+-          <button class="filter-tab active" onclick="showPage('orders')">View All →</button>
+-        </div>
+-        <table>
+-          <thead><tr>
+-            <th>Order #</th><th>Customer</th><th>Email</th><th>Total</th><th>Status</th><th>Date</th>
+-          </tr></thead>
+-          <tbody id="recent-tbody">
+-            <tr><td colspan="6" class="empty-state">Loading...</td></tr>
+-          </tbody>
+-        </table>
++        <div class="card-header"><span class="card-title">Recent Orders</span><button type="button" class="filter-tab active" id="dash-view-orders">View All →</button></div>
++        <table><thead><tr><th>Order #</th><th>Customer</th><th>Email</th><th>Total</th><th>Status</th><th>Date</th></tr></thead>
++        <tbody id="recent-tbody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody></table>
+       </div>
+     </div>
+ 
+-    <!-- Orders Page -->
+     <div class="page" id="page-orders">
+       <div class="card">
+         <div class="card-header">
+           <span class="card-title">Orders</span>
+           <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+-            <input class="search-box" id="order-search" placeholder="Search orders…" oninput="filterOrders()"/>
+-            <div class="filter-tabs">
+-              <button class="filter-tab active" data-status="all" onclick="setOrderFilter(this,'all')">All</button>
+-              <button class="filter-tab" data-status="pending" onclick="setOrderFilter(this,'pending')">Pending</button>
+-              <button class="filter-tab" data-status="confirmed" onclick="setOrderFilter(this,'confirmed')">Confirmed</button>
+-              <button class="filter-tab" data-status="in_progress" onclick="setOrderFilter(this,'in_progress')">In Progress</button>
+-              <button class="filter-tab" data-status="shipped" onclick="setOrderFilter(this,'shipped')">Shipped</button>
+-              <button class="filter-tab" data-status="delivered" onclick="setOrderFilter(this,'delivered')">Delivered</button>
++            <input class="search-box" id="order-search" placeholder="Search orders…"/>
++            <div class="filter-tabs" id="order-filters">
++              <button type="button" class="filter-tab active" data-status="all">All</button>
++              <button type="button" class="filter-tab" data-status="pending">Pending</button>
++              <button type="button" class="filter-tab" data-status="confirmed">Confirmed</button>
++              <button type="button" class="filter-tab" data-status="in_progress">In Progress</button>
++              <button type="button" class="filter-tab" data-status="shipped">Shipped</button>
++              <button type="button" class="filter-tab" data-status="delivered">Delivered</button>
++              <button type="button" class="filter-tab" data-status="cancelled">Cancelled</button>
+             </div>
+           </div>
+         </div>
+-        <table>
+-          <thead><tr>
+-            <th>Order #</th><th>Customer</th><th>Email</th><th>Total</th><th>Payment</th><th>Status</th><th>Date</th>
+-          </tr></thead>
+-          <tbody id="orders-tbody">
+-            <tr><td colspan="7" class="empty-state">Loading orders…</td></tr>
+-          </tbody>
+-        </table>
++        <table><thead><tr><th>Order #</th><th>Customer</th><th>Email</th><th>Total</th><th>Payment</th><th>Status</th><th>Date</th></tr></thead>
++        <tbody id="orders-tbody"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody></table>
+       </div>
+     </div>
+ 
+-    <!-- Customers Page -->
+     <div class="page" id="page-customers">
++      <div class="card">
++        <div class="card-header"><span class="card-title">Customers</span></div>
++        <table><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Joined</th></tr></thead>
++        <tbody id="customers-tbody"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody></table>
++      </div>
++    </div>
++
++    <div class="page" id="page-inquiries">
++      <div class="card">
++        <div class="card-header"><span class="card-title">Inquiries</span></div>
++        <table><thead><tr><th>From</th><th>Subject</th><th>Status</th><th>Source</th><th>Date</th></tr></thead>
++        <tbody id="inquiries-tbody"><tr><td colspan="5" class="empty-state">Loading…</td></tr></tbody></table>
++      </div>
++    </div>
++
++    <div class="page" id="page-products">
++      <div class="stats-grid" id="product-stats-grid" style="margin-bottom:16px"></div>
++      <div class="card">
++        <div class="card-header"><span class="card-title">Products</span></div>
++        <table><thead><tr><th>Name</th><th>SKU</th><th>Price</th><th>Inventory</th><th>Status</th><th>Sales</th></tr></thead>
++        <tbody id="products-tbody"><tr><td colspan="6" class="empty-state">Loading…</td></tr></tbody></table>
++      </div>
++    </div>
++
++    <div class="page" id="page-admin-users">
+       <div class="card">
+         <div class="card-header">
+-          <span class="card-title">Customers</span>
++          <span class="card-title">Admin Users</span>
++          <button type="button" class="btn-sm" id="btn-new-admin">+ Add Admin</button>
+         </div>
+-        <table>
+-          <thead><tr>
+-            <th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Joined</th>
+-          </tr></thead>
+-          <tbody id="customers-tbody">
+-            <tr><td colspan="5" class="empty-state">Loading…</td></tr>
+-          </tbody>
+-        </table>
++        <table><thead><tr><th>Name</th><th>Email</th><th>Joined</th><th>Actions</th></tr></thead>
++        <tbody id="admins-tbody"><tr><td colspan="4" class="empty-state">Loading…</td></tr></tbody></table>
+       </div>
+     </div>
++  </div>
+ 
+-  </div><!-- /content -->
++  <div class="content hidden" id="setup-content">
++    <div class="setup-wrap">
++      <div class="progress-bar" id="wizard-progress"></div>
++      <div class="step-labels" id="wizard-step-labels"></div>
++      <div class="wizard-layout">
++        <div class="wizard-main" id="wizard-main"></div>
++        <div class="ai-panel">
++          <div class="ai-panel-header"><span>✨</span><h3>AI Assistant Tip</h3></div>
++          <div class="ai-tip" id="ai-tip"></div>
++        </div>
++      </div>
++    </div>
++  </div>
+ </main>
+ 
+-<!-- ── Order Detail Modal ─────────────────────────────────────────────────── -->
++<!-- Order modal -->
+ <div class="modal-overlay hidden" id="order-modal">
+   <div class="modal">
+-    <div class="modal-header">
+-      <h3 id="modal-order-num">Order Details</h3>
+-      <button class="modal-close" id="modal-close">×</button>
+-    </div>
++    <div class="modal-header"><h3 id="modal-order-num">Order</h3><button type="button" class="modal-close" data-close="order-modal">×</button></div>
+     <div class="modal-body">
+       <div class="modal-grid">
+-        <div class="modal-section">
+-          <div class="modal-label">Customer</div>
+-          <div class="modal-value" id="modal-customer"></div>
+-        </div>
+-        <div class="modal-section">
+-          <div class="modal-label">Email</div>
+-          <div class="modal-value" id="modal-email"></div>
+-        </div>
+-        <div class="modal-section">
+-          <div class="modal-label">Phone</div>
+-          <div class="modal-value" id="modal-phone"></div>
+-        </div>
+-        <div class="modal-section">
+-          <div class="modal-label">Date</div>
+-          <div class="modal-value" id="modal-date"></div>
+-        </div>
+-        <div class="modal-section">
+-          <div class="modal-label">Payment</div>
+-          <div class="modal-value" id="modal-payment"></div>
+-        </div>
+-        <div class="modal-section">
+-          <div class="modal-label">Total</div>
+-          <div class="modal-value" style="font-size:1.2rem;font-weight:700;color:#FF1A8C" id="modal-total"></div>
+-        </div>
++        <div class="modal-section"><div class="modal-label">Customer</div><div class="modal-value" id="modal-customer"></div></div>
++        <div class="modal-section"><div class="modal-label">Email</div><div class="modal-value" id="modal-email"></div></div>
++        <div class="modal-section"><div class="modal-label">Phone</div><div class="modal-value" id="modal-phone"></div></div>
++        <div class="modal-section"><div class="modal-label">Date</div><div class="modal-value" id="modal-date"></div></div>
++        <div class="modal-section"><div class="modal-label">Payment</div><div class="modal-value" id="modal-payment"></div></div>
++        <div class="modal-section"><div class="modal-label">Total</div><div class="modal-value" style="font-size:1.2rem;font-weight:700;color:#FF1A8C" id="modal-total"></div></div>
+       </div>
+-      <div class="modal-section" id="modal-notes-section" style="display:none">
+-        <div class="modal-label">Customer Notes</div>
+-        <div class="modal-value" id="modal-notes" style="padding:10px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:0.85rem;margin-top:4px"></div>
+-      </div>
+-      <div class="modal-section">
+-        <div class="modal-label">Items Ordered</div>
+-        <div id="modal-items" style="margin-top:8px"></div>
+-      </div>
+-      <div class="modal-section">
+-        <div class="modal-label">Update Status</div>
+-        <div style="margin-top:8px;display:flex;align-items:center">
++      <div class="modal-section hidden" id="modal-notes-section"><div class="modal-label">Notes</div><div class="modal-value" id="modal-notes" style="padding:10px;background:rgba(255,255,255,0.04);border-radius:8px;font-size:0.85rem"></div></div>
++      <div class="modal-section"><div class="modal-label">Items</div><div id="modal-items" style="margin-top:8px"></div></div>
++      <div class="modal-section"><div class="modal-label">Update Status</div>
++        <div style="margin-top:8px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+           <select class="status-select" id="modal-status-select">
+-            <option value="pending">Pending</option>
+-            <option value="confirmed">Confirmed</option>
+-            <option value="in_progress">In Progress</option>
+-            <option value="shipped">Shipped</option>
+-            <option value="delivered">Delivered</option>
+-            <option value="cancelled">Cancelled</option>
++            <option value="pending">Pending</option><option value="confirmed">Confirmed</option>
++            <option value="in_progress">In Progress</option><option value="shipped">Shipped</option>
++            <option value="delivered">Delivered</option><option value="cancelled">Cancelled</option>
+           </select>
+-          <button class="btn-sm" id="modal-save-status">Save Status</button>
++          <button type="button" class="btn-sm" id="modal-save-status">Save Status</button>
+         </div>
+       </div>
+     </div>
+   </div>
+ </div>
+ 
++<!-- Inquiry modal -->
++<div class="modal-overlay hidden" id="inquiry-modal">
++  <div class="modal wide">
++    <div class="modal-header"><h3 id="inquiry-modal-title">Inquiry</h3><button type="button" class="modal-close" data-close="inquiry-modal">×</button></div>
++    <div class="modal-body">
++      <div class="modal-grid">
++        <div class="modal-section"><div class="modal-label">From</div><div class="modal-value" id="inq-name"></div></div>
++        <div class="modal-section"><div class="modal-label">Email</div><div class="modal-value" id="inq-email"></div></div>
++        <div class="modal-section"><div class="modal-label">Subject</div><div class="modal-value" id="inq-subject"></div></div>
++        <div class="modal-section"><div class="modal-label">Date</div><div class="modal-value" id="inq-date"></div></div>
++      </div>
++      <div class="modal-section"><div class="modal-label">Message</div><div class="modal-value" id="inq-message" style="padding:12px;background:var(--surface-2);border-radius:8px;line-height:1.5;margin-top:6px"></div></div>
++      <div class="modal-section hidden" id="inq-reply-section"><div class="modal-label">Previous Reply</div><div class="modal-value" id="inq-reply-prev" style="padding:12px;background:var(--surface-2);border-radius:8px;margin-top:6px"></div></div>
++      <div class="form-field"><label>Status</label><select id="inq-status"><option value="new">New</option><option value="read">Read</option><option value="replied">Replied</option><option value="closed">Closed</option></select></div>
++      <div class="form-field"><label>Reply</label><textarea id="inq-reply" placeholder="Type your reply…"></textarea></div>
++      <div class="modal-actions"><button type="button" class="btn-ghost" data-close="inquiry-modal">Cancel</button><button type="button" class="btn-sm" id="inq-save">Send Reply</button></div>
++    </div>
++  </div>
++</div>
++
++<!-- Product modal -->
++<div class="modal-overlay hidden" id="product-modal">
++  <div class="modal">
++    <div class="modal-header"><h3 id="product-modal-title">Edit Product</h3><button type="button" class="modal-close" data-close="product-modal">×</button></div>
++    <div class="modal-body">
++      <div class="form-field"><label>Price ($)</label><input type="number" id="prod-price" min="0" step="0.01"/></div>
++      <div class="form-field"><label>Inventory</label><input type="number" id="prod-inventory" min="0" step="1"/></div>
++      <div class="form-field"><label>Status</label><select id="prod-status"><option value="active">Active</option><option value="out_of_stock">Out of Stock</option><option value="draft">Draft</option></select></div>
++      <div class="modal-actions"><button type="button" class="btn-ghost" data-close="product-modal">Cancel</button><button type="button" class="btn-sm" id="prod-save">Save</button></div>
++    </div>
++  </div>
++</div>
++
++<!-- Admin user modal -->
++<div class="modal-overlay hidden" id="admin-modal">
++  <div class="modal">
++    <div class="modal-header"><h3 id="admin-modal-title">Admin User</h3><button type="button" class="modal-close" data-close="admin-modal">×</button></div>
++    <div class="modal-body">
++      <div class="form-field"><label>Name</label><input type="text" id="admin-user-name"/></div>
++      <div class="form-field"><label>Email</label><input type="email" id="admin-user-email"/></div>
++      <div class="form-field"><label>Password</label><input type="password" id="admin-user-pass" placeholder="Min 8 characters"/></div>
++      <div class="modal-actions">
++        <button type="button" class="btn-ghost" data-close="admin-modal">Cancel</button>
++        <button type="button" class="btn-sm btn-danger hidden" id="admin-delete">Delete</button>
++        <button type="button" class="btn-sm" id="admin-save">Save</button>
++      </div>
++    </div>
++  </div>
++</div>
++
+ <div id="toast"></div>
+ 
+-<script>
+-(function () {
++<script>(function () {
+   'use strict';
+ 
+-  let token = localStorage.getItem('qcc_admin_token');
++  const TOKEN_KEY = 'qcc_admin_token';
++  const ORDER_STATUSES = ['pending','confirmed','in_progress','shipped','delivered','cancelled'];
++  const WIZARD_STEPS = ['Welcome','E-Commerce','Payments','Email','Products','Admins','Complete'];
++  const AI_TIPS = [
++    'Welcome to your Queens admin portal! Use Setup mode to connect Etsy, Amazon, TikTok Shop, Stripe, and PayPal. Operations mode is your day-to-day command center.',
++    'Connect Etsy with your API key and shop ID. Amazon needs Seller ID and MWS token. TikTok Shop uses app key and secret from the Seller Center.',
++    'Add Stripe publishable/secret keys and webhook secret for card payments. PayPal client ID and secret enable checkout — match your live or sandbox environment.',
++    'Choose Mailchimp, Klaviyo, or SendGrid. Mailchimp/Klaviyo need API key + list ID. SendGrid uses an API key for transactional and marketing email.',
++    'Quick-edit prices and inventory here. Zero inventory auto-marks out of stock. Keep your bestsellers stocked — the Queen Squad notices!',
++    'Add trusted admins with strong passwords (8+ chars). Each admin gets full portal access. Remove accounts when team members leave.',
++    'You\'re all set! 👑 Switch to Operations to manage orders, inquiries, and products. Revisit Setup anytime to update integrations.'
++  ];
++
++  let token = localStorage.getItem(TOKEN_KEY);
++  let currentUser = null;
++  let currentMode = 'operations';
++  let currentPage = 'dashboard';
+   let currentOrderId = null;
+   let currentOrderFilter = 'all';
+-  let allOrders = [];
++  let currentInquiryId = null;
++  let currentProductId = null;
++  let currentAdminId = null;
++  let wizardStep = 0;
++  let integrations = {};
++  let wizardProducts = [];
++
++  const $ = (id) => document.getElementById(id);
++  const hide = (el) => el && el.classList.add('hidden');
++  const show = (el) => el && el.classList.remove('hidden');
++
++  function toast(msg, type) {
++    const t = $('toast');
++    t.textContent = msg;
++    t.className = 'show ' + (type || 'success');
++    setTimeout(() => { t.className = ''; }, 2500);
++  }
++
++  function fmtDate(str) {
++    if (!str) return '—';
++    return new Date(str).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
++  }
++
++  function fmtStatus(s) {
++    const m = { pending:'Pending', confirmed:'Confirmed', in_progress:'In Progress', shipped:'Shipped', delivered:'Delivered', cancelled:'Cancelled', new:'New', read:'Read', replied:'Replied', closed:'Closed', active:'Active', out_of_stock:'Out of Stock', draft:'Draft' };
++    return m[s] || s;
++  }
++
++  function badge(s) {
++    return '<span class="badge badge-' + s + '">' + fmtStatus(s) + '</span>';
++  }
++
++  async function api(path, opts) {
++    opts = opts || {};
++    const headers = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' };
++    if (opts.headers) Object.assign(headers, opts.headers);
++    const r = await fetch(path, {
++      method: opts.method || 'GET',
++      headers,
++      body: opts.body ? JSON.stringify(opts.body) : undefined
++    });
++    const data = await r.json().catch(() => ({}));
++    if (r.status === 401) {
++      localStorage.removeItem(TOKEN_KEY);
++      location.reload();
++      throw new Error('Session expired');
++    }
++    if (!r.ok && data.error) throw new Error(data.error);
++    return data;
++  }
+ 
+-  // ── Auth ──────────────────────────────────────────────────────────────────
++  function closeSidebar() {
++    $('sidebar').classList.remove('open');
++    $('mob-overlay').classList.remove('show');
++  }
+ 
+-  async function apiLogin(email, pass) {
++  function openModal(id) { show($('' + id)); }
++  function closeModal(id) { hide($('' + id)); }
++
++  document.querySelectorAll('[data-close]').forEach(btn => {
++    btn.addEventListener('click', () => closeModal(btn.getAttribute('data-close')));
++  });
++  document.querySelectorAll('.modal-overlay').forEach(ov => {
++    ov.addEventListener('click', e => { if (e.target === ov) hide(ov); });
++  });
++
++  // ── Auth ──────────────────────────────────────────────────────
++  async function login(email, pass) {
+     const r = await fetch('/api/auth/login', {
+       method: 'POST',
+       headers: { 'Content-Type': 'application/json' },
+-      body: JSON.stringify({ email, password: pass }),
++      body: JSON.stringify({ email, password: pass })
+     });
+     return r.json();
+   }
+ 
+-  document.getElementById('adm-login-btn').addEventListener('click', async () => {
+-    const email = document.getElementById('adm-email').value.trim();
+-    const pass  = document.getElementById('adm-pass').value;
+-    const errEl = document.getElementById('login-error');
+-    errEl.textContent = '';
+-
+-    const data = await apiLogin(email, pass);
+-    if (data.error) { errEl.textContent = data.error; return; }
+-    if (data.user?.role !== 'admin') { errEl.textContent = 'Admin access required'; return; }
++  function showApp(user) {
++    currentUser = user;
++    $('admin-name').textContent = user.name || user.email;
++    hide($('login-screen'));
++    show($('main-app'));
++    document.body.classList.add('authed');
++    setMode('operations');
++  }
+ 
++  $('adm-login-btn').addEventListener('click', async () => {
++    const email = $('adm-email').value.trim();
++    const pass = $('adm-pass').value;
++    $('login-error').textContent = '';
++    const data = await login(email, pass);
++    if (data.error) { $('login-error').textContent = data.error; return; }
++    if (data.user?.role !== 'admin') { $('login-error').textContent = 'Admin access required'; return; }
+     token = data.token;
+-    localStorage.setItem('qcc_admin_token', token);
+-    document.getElementById('admin-name').textContent = data.user.name || data.user.email;
+-    document.getElementById('login-screen').style.display = 'none';
+-    document.getElementById('main-app').style.display = 'flex';
+-    loadDashboard();
+-  });
+-
+-  // Allow Enter key on password field
+-  document.getElementById('adm-pass').addEventListener('keydown', e => {
+-    if (e.key === 'Enter') document.getElementById('adm-login-btn').click();
++    localStorage.setItem(TOKEN_KEY, token);
++    showApp(data.user);
+   });
++  $('adm-pass').addEventListener('keydown', e => { if (e.key === 'Enter') $('adm-login-btn').click(); });
+ 
+-  // Auto-login if token exists
+   if (token) {
+-    fetch('/api/auth/me', { headers: { Authorization: `Bearer ${token}` } })
++    fetch('/api/auth/me', { headers: { Authorization: 'Bearer ' + token } })
+       .then(r => r.json())
+       .then(user => {
+-        if (user?.role === 'admin') {
+-          document.getElementById('admin-name').textContent = user.name || user.email;
+-          document.getElementById('login-screen').style.display = 'none';
+-          document.getElementById('main-app').style.display = 'flex';
+-          loadDashboard();
+-        } else {
+-          localStorage.removeItem('qcc_admin_token');
+-        }
+-      }).catch(() => localStorage.removeItem('qcc_admin_token'));
++        if (user?.role === 'admin') showApp(user);
++        else localStorage.removeItem(TOKEN_KEY);
++      })
++      .catch(() => localStorage.removeItem(TOKEN_KEY));
+   }
+ 
+-  document.getElementById('logout-btn').addEventListener('click', () => {
+-    localStorage.removeItem('qcc_admin_token');
++  $('logout-btn').addEventListener('click', () => {
++    localStorage.removeItem(TOKEN_KEY);
+     location.reload();
+   });
+ 
+-  // ── Navigation ────────────────────────────────────────────────────────────
++  // ── Mode toggle ─────────────────────────────────────────────
++  function setMode(mode) {
++    currentMode = mode;
++    document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
++    const sidebar = $('sidebar');
++    const main = $('main-app');
++    if (mode === 'setup') {
++      hide($('ops-content'));
++      show($('setup-content'));
++      sidebar.classList.add('hidden');
++      main.classList.add('setup-mode');
++      loadIntegrations().then(() => renderWizard()).catch(() => renderWizard());
++    } else {
++      show($('ops-content'));
++      hide($('setup-content'));
++      sidebar.classList.remove('hidden');
++      main.classList.remove('setup-mode');
++      showPage(currentPage);
++    }
++    closeSidebar();
++  }
+ 
+-  window.showPage = function(name, filter) {
+-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+-    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+-    document.getElementById(`page-${name}`).classList.add('active');
+-    document.querySelector(`[data-page="${name}"]`)?.classList.add('active');
+-    document.getElementById('page-title').textContent =
+-      name === 'dashboard' ? 'Dashboard' : name === 'orders' ? 'All Orders' : 'Customers';
++  document.querySelectorAll('.mode-btn').forEach(btn => {
++    btn.addEventListener('click', () => setMode(btn.dataset.mode));
++  });
+ 
++  // ── Navigation ────────────────────────────────────────────────
++  const PAGE_TITLES = { dashboard:'Dashboard', orders:'Orders', customers:'Customers', inquiries:'Inquiries', products:'Products', 'admin-users':'Admin Users' };
++
++  function showPage(name) {
++    currentPage = name;
++    document.querySelectorAll('#ops-content .page').forEach(p => p.classList.remove('active'));
++    document.querySelectorAll('#ops-nav .nav-item').forEach(n => n.classList.remove('active'));
++    const page = $('page-' + name);
++    if (page) page.classList.add('active');
++    const nav = document.querySelector('#ops-nav [data-page="' + name + '"]');
++    if (nav) nav.classList.add('active');
++    $('page-title').textContent = PAGE_TITLES[name] || name;
+     if (name === 'dashboard') loadDashboard();
+-    if (name === 'orders') { if (filter) setOrderFilter(document.querySelector(`[data-status="${filter}"]`), filter); else loadOrders(); }
++    if (name === 'orders') loadOrders();
+     if (name === 'customers') loadCustomers();
++    if (name === 'inquiries') loadInquiries();
++    if (name === 'products') loadProducts();
++    if (name === 'admin-users') loadAdminUsers();
+     closeSidebar();
+-  };
++  }
+ 
+-  document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
+-    btn.addEventListener('click', () => showPage(btn.dataset.page, btn.dataset.filter));
++  document.querySelectorAll('#ops-nav .nav-item').forEach(btn => {
++    btn.addEventListener('click', () => showPage(btn.dataset.page));
+   });
++  $('dash-view-orders').addEventListener('click', () => showPage('orders'));
+ 
+-  // ── Mobile sidebar ────────────────────────────────────────────────────────
+-  const sidebar = document.getElementById('sidebar');
+-  const overlay = document.getElementById('mob-overlay');
+-  document.getElementById('ham').addEventListener('click', () => {
+-    sidebar.classList.add('open');
+-    overlay.classList.add('show');
++  $('ham').addEventListener('click', () => {
++    $('sidebar').classList.add('open');
++    $('mob-overlay').classList.add('show');
+   });
+-  function closeSidebar() {
+-    sidebar.classList.remove('open');
+-    overlay.classList.remove('show');
+-  }
+-  overlay.addEventListener('click', closeSidebar);
+-
+-  // ── Fetch helpers ─────────────────────────────────────────────────────────
+-
+-  function api(path, opts = {}) {
+-    return fetch(path, {
+-      ...opts,
+-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', ...(opts.headers || {}) },
+-      body: opts.body ? JSON.stringify(opts.body) : undefined,
+-    }).then(r => r.json());
+-  }
+-
+-  // ── Dashboard ─────────────────────────────────────────────────────────────
++  $('mob-overlay').addEventListener('click', closeSidebar);
+ 
++  // ── Dashboard ───────────────────────────────────────────────
+   async function loadDashboard() {
+     const data = await api('/api/admin/stats');
+-    document.getElementById('stat-revenue').textContent  = `$${data.revenue}`;
+-    document.getElementById('stat-orders').textContent   = data.totalOrders;
+-    document.getElementById('stat-pending').textContent  = data.pendingOrders;
+-    document.getElementById('stat-customers').textContent= data.customers;
+-
+-    const tbody = document.getElementById('recent-tbody');
++    $('stat-revenue').textContent = '$' + data.revenue;
++    $('stat-orders').textContent = data.totalOrders;
++    $('stat-pending').textContent = data.pendingOrders;
++    $('stat-customers').textContent = data.customers;
++    $('stat-inquiries').textContent = data.newInquiries;
++    $('stat-products').textContent = data.activeProducts;
++    const tbody = $('recent-tbody');
+     if (!data.recentOrders?.length) {
+       tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No orders yet 👑</td></tr>';
+       return;
+     }
+-    tbody.innerHTML = data.recentOrders.map(o => `
+-      <tr onclick="openOrder(${o.id})">
+-        <td class="td-order">${o.order_num}</td>
+-        <td class="td-customer">${o.customer_name}</td>
+-        <td class="td-email">${o.customer_email}</td>
+-        <td class="td-amount">$${parseFloat(o.total).toFixed(2)}</td>
+-        <td><span class="badge badge-${o.status}">${fmtStatus(o.status)}</span></td>
+-        <td class="td-date">${fmtDate(o.created_at)}</td>
+-      </tr>`).join('');
++    tbody.innerHTML = data.recentOrders.map(o => '<tr class="clickable" data-order="' + o.id + '"><td class="td-order">' + o.order_num + '</td><td class="td-customer">' + esc(o.customer_name) + '</td><td class="td-email">' + esc(o.customer_email) + '</td><td class="td-amount">$' + parseFloat(o.total).toFixed(2) + '</td><td>' + badge(o.status) + '</td><td class="td-date">' + fmtDate(o.created_at) + '</td></tr>').join('');
++    tbody.querySelectorAll('[data-order]').forEach(row => row.addEventListener('click', () => openOrder(row.dataset.order)));
+   }
+ 
+-  // ── Orders ────────────────────────────────────────────────────────────────
+-
++  // ── Orders ────────────────────────────────────────────────────
+   async function loadOrders() {
+-    const search = document.getElementById('order-search')?.value || '';
+-    const data = await api(`/api/admin/orders?status=${currentOrderFilter}&search=${encodeURIComponent(search)}`);
+-    allOrders = data.orders || [];
+-    renderOrderTable(allOrders);
+-  }
+-
+-  function renderOrderTable(orders) {
+-    const tbody = document.getElementById('orders-tbody');
++    const search = $('order-search').value || '';
++    const data = await api('/api/admin/orders?status=' + currentOrderFilter + '&search=' + encodeURIComponent(search));
++    const tbody = $('orders-tbody');
++    const orders = data.orders || [];
+     if (!orders.length) {
+       tbody.innerHTML = '<tr><td colspan="7" class="empty-state">No orders found</td></tr>';
+       return;
+     }
+-    tbody.innerHTML = orders.map(o => `
+-      <tr onclick="openOrder(${o.id})">
+-        <td class="td-order">${o.order_num}</td>
+-        <td class="td-customer">${o.customer_name}</td>
+-        <td class="td-email">${o.customer_email}</td>
+-        <td class="td-amount">$${parseFloat(o.total).toFixed(2)}</td>
+-        <td><span class="badge badge-${o.payment_status}">${o.payment_status}</span></td>
+-        <td><span class="badge badge-${o.status}">${fmtStatus(o.status)}</span></td>
+-        <td class="td-date">${fmtDate(o.created_at)}</td>
+-      </tr>`).join('');
++    tbody.innerHTML = orders.map(o => '<tr class="clickable" data-order="' + o.id + '"><td class="td-order">' + o.order_num + '</td><td class="td-customer">' + esc(o.customer_name) + '</td><td class="td-email">' + esc(o.customer_email) + '</td><td class="td-amount">$' + parseFloat(o.total).toFixed(2) + '</td><td>' + badge(o.payment_status) + '</td><td>' + badge(o.status) + '</td><td class="td-date">' + fmtDate(o.created_at) + '</td></tr>').join('');
++    tbody.querySelectorAll('[data-order]').forEach(row => row.addEventListener('click', () => openOrder(row.dataset.order)));
+   }
+ 
+-  window.setOrderFilter = function(el, status) {
+-    currentOrderFilter = status;
+-    document.querySelectorAll('.filter-tab[data-status]').forEach(t => t.classList.remove('active'));
+-    if (el) el.classList.add('active');
+-    loadOrders();
+-  };
++  $('order-search').addEventListener('input', () => loadOrders());
++  document.querySelectorAll('#order-filters .filter-tab').forEach(tab => {
++    tab.addEventListener('click', () => {
++      currentOrderFilter = tab.dataset.status;
++      document.querySelectorAll('#order-filters .filter-tab').forEach(t => t.classList.remove('active'));
++      tab.classList.add('active');
++      loadOrders();
++    });
++  });
+ 
+-  window.filterOrders = function() { loadOrders(); };
++  async function openOrder(id) {
++    currentOrderId = id;
++    const order = await api('/api/admin/orders/' + id);
++    $('modal-order-num').textContent = order.order_num;
++    $('modal-customer').textContent = order.customer_name;
++    $('modal-email').textContent = order.customer_email;
++    $('modal-phone').textContent = order.customer_phone || '—';
++    $('modal-date').textContent = fmtDate(order.created_at);
++    $('modal-payment').innerHTML = badge(order.payment_status);
++    $('modal-total').textContent = '$' + parseFloat(order.total).toFixed(2);
++    $('modal-status-select').value = order.status;
++    const notesSec = $('modal-notes-section');
++    if (order.notes) {
++      show(notesSec);
++      $('modal-notes').textContent = order.notes;
++    } else hide(notesSec);
++    const items = Array.isArray(order.items) ? order.items : JSON.parse(order.items || '[]');
++    $('modal-items').innerHTML = items.map(i => '<div class="item-row"><span>' + esc(i.name) + ' × ' + (i.qty || 1) + '</span><span>$' + ((i.price || 40) * (i.qty || 1)).toFixed(2) + '</span></div>').join('') +
++      '<div class="item-row" style="font-weight:700;margin-top:4px"><span>Total</span><span style="color:#FF1A8C">$' + parseFloat(order.total).toFixed(2) + '</span></div>';
++    openModal('order-modal');
++  }
+ 
+-  // ── Customers ─────────────────────────────────────────────────────────────
++  $('modal-save-status').addEventListener('click', async () => {
++    const status = $('modal-status-select').value;
++    await api('/api/admin/orders/' + currentOrderId + '/status', { method: 'PATCH', body: { status } });
++    toast('Status updated');
++    closeModal('order-modal');
++    loadOrders();
++    if (currentPage === 'dashboard') loadDashboard();
++  });
+ 
++  // ── Customers ─────────────────────────────────────────────────
+   async function loadCustomers() {
+     const customers = await api('/api/admin/customers');
+-    const tbody = document.getElementById('customers-tbody');
+-    if (!customers.length) {
++    const tbody = $('customers-tbody');
++    const list = customers.filter(c => c.role !== 'admin');
++    if (!list.length) {
+       tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No customers yet</td></tr>';
+       return;
+     }
+-    tbody.innerHTML = customers.filter(c => c.role !== 'admin').map(c => `
+-      <tr>
+-        <td class="td-customer">${c.name}</td>
+-        <td class="td-email">${c.email}</td>
+-        <td class="td-email">${c.phone || '—'}</td>
+-        <td><span class="badge badge-confirmed">${c.role}</span></td>
+-        <td class="td-date">${fmtDate(c.created_at)}</td>
+-      </tr>`).join('');
++    tbody.innerHTML = list.map(c => '<tr><td class="td-customer">' + esc(c.name) + '</td><td class="td-email">' + esc(c.email) + '</td><td class="td-email">' + (c.phone || '—') + '</td><td>' + badge(c.role) + '</td><td class="td-date">' + fmtDate(c.created_at) + '</td></tr>').join('');
+   }
+ 
+-  // ── Order Detail Modal ────────────────────────────────────────────────────
++  // ── Inquiries ─────────────────────────────────────────────────
++  async function loadInquiries() {
++    const inquiries = await api('/api/admin/inquiries');
++    const tbody = $('inquiries-tbody');
++    if (!inquiries.length) {
++      tbody.innerHTML = '<tr><td colspan="5" class="empty-state">No inquiries</td></tr>';
++      return;
++    }
++    tbody.innerHTML = inquiries.map(q => '<tr class="clickable" data-inquiry="' + q.id + '"><td class="td-customer">' + esc(q.name) + '<br><span class="td-email">' + esc(q.email) + '</span></td><td>' + esc(q.subject || '—') + '</td><td>' + badge(q.status) + '</td><td class="td-email">' + esc(q.source || 'website') + '</td><td class="td-date">' + fmtDate(q.created_at) + '</td></tr>').join('');
++    tbody.querySelectorAll('[data-inquiry]').forEach(row => row.addEventListener('click', () => openInquiry(row.dataset.inquiry)));
++  }
+ 
+-  window.openOrder = async function(id) {
+-    currentOrderId = id;
+-    const order = await api(`/api/admin/orders/${id}`);
+-    document.getElementById('modal-order-num').textContent = order.order_num;
+-    document.getElementById('modal-customer').textContent  = order.customer_name;
+-    document.getElementById('modal-email').textContent     = order.customer_email;
+-    document.getElementById('modal-phone').textContent     = order.customer_phone || '—';
+-    document.getElementById('modal-date').textContent      = fmtDate(order.created_at);
+-    document.getElementById('modal-payment').innerHTML     = `<span class="badge badge-${order.payment_status}">${order.payment_status}</span>`;
+-    document.getElementById('modal-total').textContent     = `$${parseFloat(order.total).toFixed(2)}`;
+-    document.getElementById('modal-status-select').value   = order.status;
+-
+-    const notesEl = document.getElementById('modal-notes-section');
+-    if (order.notes) {
+-      notesEl.style.display = '';
+-      document.getElementById('modal-notes').textContent = order.notes;
+-    } else {
+-      notesEl.style.display = 'none';
++  async function openInquiry(id) {
++    currentInquiryId = id;
++    const inquiries = await api('/api/admin/inquiries');
++    const q = inquiries.find(x => String(x.id) === String(id));
++    if (!q) return;
++    $('inquiry-modal-title').textContent = q.subject || 'Inquiry';
++    $('inq-name').textContent = q.name;
++    $('inq-email').textContent = q.email;
++    $('inq-subject').textContent = q.subject || '—';
++    $('inq-date').textContent = fmtDate(q.created_at);
++    $('inq-message').textContent = q.message;
++    $('inq-status').value = q.status || 'new';
++    $('inq-reply').value = '';
++    const replySec = $('inq-reply-section');
++    if (q.reply) {
++      show(replySec);
++      $('inq-reply-prev').textContent = q.reply;
++    } else hide(replySec);
++    openModal('inquiry-modal');
++  }
++
++  $('inq-save').addEventListener('click', async () => {
++    const status = $('inq-status').value;
++    const reply = $('inq-reply').value.trim();
++    const body = { status };
++    if (reply) body.reply = reply;
++    await api('/api/admin/inquiries/' + currentInquiryId, { method: 'PUT', body });
++    toast(reply ? 'Reply sent' : 'Inquiry updated');
++    closeModal('inquiry-modal');
++    loadInquiries();
++    if (currentPage === 'dashboard') loadDashboard();
++  });
++
++  // ── Products ──────────────────────────────────────────────────
++  async function loadProducts() {
++    const data = await api('/api/admin/products');
++    const stats = data.stats || {};
++    $('product-stats-grid').innerHTML =
++      '<div class="stat-card"><div class="stat-label">Total</div><div class="stat-val">' + (stats.total || 0) + '</div></div>' +
++      '<div class="stat-card green"><div class="stat-label">Active</div><div class="stat-val">' + (stats.active || 0) + '</div></div>' +
++      '<div class="stat-card amber"><div class="stat-label">Out of Stock</div><div class="stat-val">' + (stats.outOfStock || 0) + '</div></div>' +
++      '<div class="stat-card pink"><div class="stat-label">Total Sales</div><div class="stat-val">' + (stats.totalSales || 0) + '</div></div>';
++    const tbody = $('products-tbody');
++    const products = data.products || [];
++    if (!products.length) {
++      tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No products</td></tr>';
++      return;
+     }
++    tbody.innerHTML = products.map(p => '<tr class="clickable" data-product="' + p.id + '"><td class="td-customer">' + esc(p.name) + '</td><td class="td-order">' + esc(p.sku) + '</td><td class="td-amount">$' + parseFloat(p.price).toFixed(2) + '</td><td>' + p.inventory + '</td><td>' + badge(p.status) + '</td><td>' + (p.sales || 0) + '</td></tr>').join('');
++    tbody.querySelectorAll('[data-product]').forEach(row => row.addEventListener('click', () => openProduct(row.dataset.product, products)));
++  }
+ 
+-    const items = Array.isArray(order.items) ? order.items : JSON.parse(order.items);
+-    document.getElementById('modal-items').innerHTML = items.map(i => `
+-      <div class="item-row">
+-        <span>${i.name} × ${i.qty || 1}</span>
+-        <span>$${((i.price || 40) * (i.qty || 1)).toFixed(2)}</span>
+-      </div>`).join('') +
+-      `<div class="item-row" style="font-weight:700;border-top:1px solid rgba(255,255,255,0.1);margin-top:4px;padding-top:12px">
+-        <span>Total</span><span style="color:#FF1A8C">$${parseFloat(order.total).toFixed(2)}</span>
+-      </div>`;
+-
+-    document.getElementById('order-modal').classList.remove('hidden');
+-  };
+-
+-  document.getElementById('modal-close').addEventListener('click', () => {
+-    document.getElementById('order-modal').classList.add('hidden');
++  function openProduct(id, products) {
++    const p = products.find(x => String(x.id) === String(id));
++    if (!p) return;
++    currentProductId = id;
++    $('product-modal-title').textContent = p.name;
++    $('prod-price').value = p.price;
++    $('prod-inventory').value = p.inventory;
++    $('prod-status').value = p.status;
++    openModal('product-modal');
++  }
++
++  $('prod-save').addEventListener('click', async () => {
++    await api('/api/admin/products/' + currentProductId, {
++      method: 'PUT',
++      body: {
++        price: parseFloat($('prod-price').value),
++        inventory: parseInt($('prod-inventory').value, 10),
++        status: $('prod-status').value
++      }
++    });
++    toast('Product updated');
++    closeModal('product-modal');
++    loadProducts();
++    if (currentPage === 'dashboard') loadDashboard();
+   });
+-  document.getElementById('order-modal').addEventListener('click', e => {
+-    if (e.target === e.currentTarget) document.getElementById('order-modal').classList.add('hidden');
++
++  // ── Admin users ───────────────────────────────────────────────
++  async function loadAdminUsers() {
++    const users = await api('/api/admin/users');
++    const tbody = $('admins-tbody');
++    if (!users.length) {
++      tbody.innerHTML = '<tr><td colspan="4" class="empty-state">No admin users</td></tr>';
++      return;
++    }
++    tbody.innerHTML = users.map(u => '<tr><td class="td-customer">' + esc(u.name) + '</td><td class="td-email">' + esc(u.email) + '</td><td class="td-date">' + fmtDate(u.created_at) + '</td><td><button type="button" class="btn-sm" data-edit-admin="' + u.id + '">Edit</button></td></tr>').join('');
++    tbody.querySelectorAll('[data-edit-admin]').forEach(btn => btn.addEventListener('click', () => openAdminModal(btn.dataset.editAdmin, users)));
++  }
++
++  function openAdminModal(id, users) {
++    currentAdminId = id || null;
++    $('admin-modal-title').textContent = id ? 'Edit Admin' : 'New Admin';
++    $('admin-user-name').value = '';
++    $('admin-user-email').value = '';
++    $('admin-user-pass').value = '';
++    $('admin-user-pass').placeholder = id ? 'Leave blank to keep current' : 'Min 8 characters';
++    const delBtn = $('admin-delete');
++    if (id) {
++      const u = users.find(x => String(x.id) === String(id));
++      if (u) {
++        $('admin-user-name').value = u.name || '';
++        $('admin-user-email').value = u.email || '';
++      }
++      show(delBtn);
++      delBtn.classList.toggle('hidden', String(id) === String(currentUser?.id));
++    } else hide(delBtn);
++    openModal('admin-modal');
++  }
++
++  $('btn-new-admin').addEventListener('click', () => openAdminModal(null, []));
++
++  $('admin-save').addEventListener('click', async () => {
++    const name = $('admin-user-name').value.trim();
++    const email = $('admin-user-email').value.trim();
++    const password = $('admin-user-pass').value;
++    try {
++      if (currentAdminId) {
++        const body = {};
++        if (name) body.name = name;
++        if (email) body.email = email;
++        if (password) body.password = password;
++        await api('/api/admin/users/' + currentAdminId, { method: 'PUT', body });
++        toast('Admin updated');
++      } else {
++        if (!email || !password) { toast('Email and password required', 'error'); return; }
++        await api('/api/admin/users', { method: 'POST', body: { name, email, password } });
++        toast('Admin created');
++      }
++      closeModal('admin-modal');
++      loadAdminUsers();
++    } catch (e) {
++      toast(e.message || 'Error', 'error');
++    }
+   });
+ 
+-  document.getElementById('modal-save-status').addEventListener('click', async () => {
+-    const status = document.getElementById('modal-status-select').value;
+-    await api(`/api/admin/orders/${currentOrderId}/status`, { method: 'PATCH', body: { status } });
+-    showToast('Status updated!', 'success');
+-    document.getElementById('order-modal').classList.add('hidden');
+-    loadOrders();
+-    loadDashboard();
++  $('admin-delete').addEventListener('click', async () => {
++    if (!currentAdminId || !confirm('Delete this admin user?')) return;
++    try {
++      await api('/api/admin/users/' + currentAdminId, { method: 'DELETE' });
++      toast('Admin deleted');
++      closeModal('admin-modal');
++      loadAdminUsers();
++    } catch (e) {
++      toast(e.message || 'Error', 'error');
++    }
+   });
+ 
+-  // ── Helpers ───────────────────────────────────────────────────────────────
++  // ── Setup wizard ──────────────────────────────────────────────
++  async function loadIntegrations() {
++    integrations = await api('/api/admin/integrations');
++    return integrations;
++  }
+ 
+-  function fmtDate(str) {
+-    if (!str) return '—';
+-    return new Date(str).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
++  function renderProgress() {
++    const bar = $('wizard-progress');
++    const labels = $('wizard-step-labels');
++    bar.innerHTML = WIZARD_STEPS.map((_, i) => '<div class="progress-step' + (i < wizardStep ? ' done' : '') + (i === wizardStep ? ' current' : '') + '"></div>').join('');
++    labels.innerHTML = WIZARD_STEPS.map((s, i) => '<span>' + s + '</span>').join('');
++    $('ai-tip').textContent = AI_TIPS[wizardStep] || '';
+   }
+ 
+-  function fmtStatus(s) {
+-    return { pending:'Pending', confirmed:'Confirmed', in_progress:'In Progress', shipped:'Shipped', delivered:'Delivered', cancelled:'Cancelled' }[s] || s;
++  function field(label, id, value, type) {
++    type = type || 'text';
++    return '<div class="form-field"><label>' + label + '</label><input type="' + type + '" id="' + id + '" value="' + escAttr(value || '') + '"/></div>';
+   }
+ 
+-  function showToast(msg, type = 'success') {
+-    const t = document.getElementById('toast');
+-    t.textContent = msg;
+-    t.className = `show ${type}`;
+-    setTimeout(() => t.className = '', 2500);
++  async function renderWizard() {
++    renderProgress();
++    const main = $('wizard-main');
++    let html = '';
++    const em = integrations.emailMarketing || {};
++
++    if (wizardStep === 0) {
++      html = '<h2>Welcome, Queen! 👑</h2><p class="lead">This wizard connects your shop to Etsy, Amazon, TikTok Shop, payment processors, and email marketing. You can always return here from Setup mode.</p><div class="wizard-nav"><span></span><button type="button" class="btn-pink" id="wiz-next">Start Setup →</button></div>';
++    } else if (wizardStep === 1) {
++      const e = integrations.etsy || {};
++      const a = integrations.amazon || {};
++      const t = integrations.tiktokShop || {};
++      html = '<h2>E-Commerce Integrations</h2><p class="lead">Connect your marketplace accounts to sync orders and inventory.</p><div class="integration-grid">' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (e.connected ? ' on' : '') + '"></span> Etsy</h4>' + field('API Key', 'wiz-etsy-key', e.apiKey) + field('Shop ID', 'wiz-etsy-shop', e.shopId) + '</div>' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (a.connected ? ' on' : '') + '"></span> Amazon</h4>' + field('Seller ID', 'wiz-amz-seller', a.sellerId) + field('MWS Token', 'wiz-amz-token', a.mwsToken) + '</div>' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (t.connected ? ' on' : '') + '"></span> TikTok Shop</h4>' + field('App Key', 'wiz-tiktok-key', t.appKey) + field('App Secret', 'wiz-tiktok-secret', t.appSecret) + '</div>' +
++        '</div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
++    } else if (wizardStep === 2) {
++      const s = integrations.stripe || {};
++      const p = integrations.paypal || {};
++      html = '<h2>Payments</h2><p class="lead">Configure Stripe and PayPal for checkout on queenscustoms.shop.</p><div class="integration-grid">' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (s.connected ? ' on' : '') + '"></span> Stripe</h4>' + field('Publishable Key', 'wiz-stripe-pub', s.publishableKey) + field('Secret Key', 'wiz-stripe-secret', s.secretKey) + field('Webhook Secret', 'wiz-stripe-webhook', s.webhookSecret) + '</div>' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (p.connected ? ' on' : '') + '"></span> PayPal</h4>' + field('Client ID', 'wiz-paypal-id', p.clientId) + field('Client Secret', 'wiz-paypal-secret', p.clientSecret) + '</div>' +
++        '</div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
++    } else if (wizardStep === 3) {
++      const prov = em.provider || 'mailchimp';
++      html = '<h2>Email Marketing</h2><p class="lead">Connect your email platform for newsletters and order updates.</p>' +
++        '<div class="form-field"><label>Provider</label><select id="wiz-email-provider"><option value="mailchimp">Mailchimp</option><option value="klaviyo">Klaviyo</option><option value="sendgrid">SendGrid</option></select></div>' +
++        field('API Key', 'wiz-email-key', em.apiKey) +
++        '<div id="wiz-list-field" class="form-field"><label>List ID</label><input type="text" id="wiz-email-list" value="' + escAttr(em.listId || '') + '"/></div>' +
++        '<div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
++    } else if (wizardStep === 4) {
++      const data = await api('/api/admin/products');
++      wizardProducts = data.products || [];
++      const rows = wizardProducts.slice(0, 12).map(p => '<div class="product-quick-row"><span class="name">' + esc(p.name) + '</span><input type="number" data-wiz-price="' + p.id + '" value="' + p.price + '" step="0.01" min="0" title="Price"/><input type="number" data-wiz-inv="' + p.id + '" value="' + p.inventory + '" min="0" title="Inventory"/><button type="button" class="btn-sm" data-wiz-save-prod="' + p.id + '">Save</button></div>').join('');
++      html = '<h2>Products Quick-Edit</h2><p class="lead">Update prices and inventory for your top products.</p>' +
++        (rows || '<p class="empty-state">No products found</p>') +
++        '<div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-next">Continue →</button></div>';
++    } else if (wizardStep === 5) {
++      html = '<h2>Admin Users</h2><p class="lead">Add team members who can access this portal.</p>' +
++        field('Name', 'wiz-admin-name', '') + field('Email', 'wiz-admin-email', '', 'email') + field('Password', 'wiz-admin-pass', '', 'password') +
++        '<button type="button" class="btn-sm" id="wiz-add-admin" style="margin-top:8px">+ Add Admin</button>' +
++        '<div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-next">Continue →</button></div>';
++    } else {
++      html = '<div class="complete-icon">👑</div><h2 style="text-align:center">Setup Complete!</h2><p class="lead" style="text-align:center">Your Queens Custom Creations admin portal is configured. Head to Operations to manage your empire.</p>' +
++        '<div class="wizard-nav" style="justify-content:center"><button type="button" class="btn-pink" id="wiz-finish">Go to Operations →</button></div>';
++    }
++
++    main.innerHTML = html;
++
++    const back = $('wiz-back');
++    if (back) back.addEventListener('click', () => { wizardStep = Math.max(0, wizardStep - 1); renderWizard(); });
++    const next = $('wiz-next');
++    if (next) next.addEventListener('click', () => { wizardStep = Math.min(6, wizardStep + 1); renderWizard(); });
++    const saveStep = $('wiz-save-step');
++    if (saveStep) saveStep.addEventListener('click', saveWizardStep);
++    const finish = $('wiz-finish');
++    if (finish) finish.addEventListener('click', () => setMode('operations'));
++
++    if (wizardStep === 3) {
++      const sel = $('wiz-email-provider');
++      if (sel) {
++        sel.value = em.provider || 'mailchimp';
++        sel.addEventListener('change', () => {
++          const listField = $('wiz-list-field');
++          if (listField) listField.style.display = sel.value === 'sendgrid' ? 'none' : '';
++        });
++        if (sel.value === 'sendgrid') $('wiz-list-field').style.display = 'none';
++      }
++    }
++
++    if (wizardStep === 4) {
++      document.querySelectorAll('[data-wiz-save-prod]').forEach(btn => {
++        btn.addEventListener('click', async () => {
++          const id = btn.dataset.wizSaveProd;
++          const price = document.querySelector('[data-wiz-price="' + id + '"]').value;
++          const inv = document.querySelector('[data-wiz-inv="' + id + '"]').value;
++          await api('/api/admin/products/' + id, { method: 'PUT', body: { price: parseFloat(price), inventory: parseInt(inv, 10) } });
++          toast('Product saved');
++        });
++      });
++    }
++
++    if (wizardStep === 5) {
++      $('wiz-add-admin').addEventListener('click', async () => {
++        const name = $('wiz-admin-name').value.trim();
++        const email = $('wiz-admin-email').value.trim();
++        const password = $('wiz-admin-pass').value;
++        if (!email || !password) { toast('Email and password required', 'error'); return; }
++        try {
++          await api('/api/admin/users', { method: 'POST', body: { name, email, password } });
++          toast('Admin added');
++          $('wiz-admin-name').value = '';
++          $('wiz-admin-email').value = '';
++          $('wiz-admin-pass').value = '';
++        } catch (e) { toast(e.message, 'error'); }
++      });
++    }
++  }
++
++  async function saveWizardStep() {
++    let body = {};
++    if (wizardStep === 1) {
++      body = {
++        etsy: { apiKey: val('wiz-etsy-key'), shopId: val('wiz-etsy-shop'), connected: !!(val('wiz-etsy-key') && val('wiz-etsy-shop')) },
++        amazon: { sellerId: val('wiz-amz-seller'), mwsToken: val('wiz-amz-token'), connected: !!(val('wiz-amz-seller') && val('wiz-amz-token')) },
++        tiktokShop: { appKey: val('wiz-tiktok-key'), appSecret: val('wiz-tiktok-secret'), connected: !!(val('wiz-tiktok-key') && val('wiz-tiktok-secret')) }
++      };
++    } else if (wizardStep === 2) {
++      body = {
++        stripe: { publishableKey: val('wiz-stripe-pub'), secretKey: val('wiz-stripe-secret'), webhookSecret: val('wiz-stripe-webhook'), connected: !!(val('wiz-stripe-pub') && val('wiz-stripe-secret')) },
++        paypal: { clientId: val('wiz-paypal-id'), clientSecret: val('wiz-paypal-secret'), connected: !!(val('wiz-paypal-id') && val('wiz-paypal-secret')) }
++      };
++    } else if (wizardStep === 3) {
++      const prov = $('wiz-email-provider').value;
++      body = {
++        emailMarketing: {
++          provider: prov,
++          apiKey: val('wiz-email-key'),
++          listId: val('wiz-email-list'),
++          connected: !!val('wiz-email-key')
++        }
++      };
++    }
++    try {
++      integrations = await api('/api/admin/integrations', { method: 'PUT', body });
++      toast('Settings saved');
++      wizardStep = Math.min(6, wizardStep + 1);
++      renderWizard();
++    } catch (e) { toast(e.message || 'Save failed', 'error'); }
++  }
++
++  function val(id) { const el = $(id); return el ? el.value.trim() : ''; }
++
++  function esc(s) {
++    if (!s) return '';
++    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+   }
++  function escAttr(s) { return esc(s).replace(/'/g, '&#39;'); }
+ 
+ })();
+ </script>
+-- 
+2.43.0
+
+
+From d5fd9363969c644aca156ab7f55e157fc27f5dcc Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 7 Aug 2026 19:07:15 +0000
+Subject: [PATCH 2/3] feat: add inquiries, products, integrations APIs for dual
+ admin portal
+
+Backend support for Operations + Setup Wizard:
+- SQLite tables: inquiries, products, integrations
+- Admin APIs for inquiries, products, integrations, user CRUD
+- Public POST /api/inquiries and GET /api/products
+- Seed products + mike@myk.com admin alongside The Vibe Queen
+---
+ .env.example |   4 ++
+ db.js        | 104 ++++++++++++++++++++++++++++---
+ server.js    | 172 ++++++++++++++++++++++++++++++++++++++++++++++++++-
+ 3 files changed, 269 insertions(+), 11 deletions(-)
+
+diff --git a/.env.example b/.env.example
+index 02d942a..fe7db1a 100644
+--- a/.env.example
++++ b/.env.example
+@@ -25,3 +25,7 @@ TWILIO_FROM=+1XXXXXXXXXX   # Your Twilio phone number
+ # ── Security ──────────────────────────────────────────────────────────────────
+ # Random secret for JWT tokens — use any long random string
+ JWT_SECRET=queens-custom-creations-change-this-to-something-random-2026
++
++# ── Admin seed (optional second admin on first boot) ──────────────────────────
++ADMIN_SEED_EMAIL=mike@myk.com
++ADMIN_SEED_PASSWORD=87188718
+diff --git a/db.js b/db.js
+index 3966bdb..db47e42 100644
+--- a/db.js
++++ b/db.js
+@@ -69,18 +69,104 @@ async function initDB() {
+     );
+   `);
+ 
+-  saveDB();
++  db.run(`
++    CREATE TABLE IF NOT EXISTS inquiries (
++      id          INTEGER PRIMARY KEY AUTOINCREMENT,
++      name        TEXT NOT NULL,
++      email       TEXT NOT NULL,
++      subject     TEXT,
++      message     TEXT NOT NULL,
++      status      TEXT DEFAULT 'new',
++      reply       TEXT DEFAULT '',
++      source      TEXT DEFAULT 'website',
++      created_at  TEXT DEFAULT (datetime('now')),
++      updated_at  TEXT DEFAULT (datetime('now'))
++    );
++  `);
+ 
+-  // ── Seed admin ──────────────────────────────────────────────────────────────
+-  const adminRows = db.exec("SELECT id FROM customers WHERE email = 'wired4365@aol.com'");
+-  if (!adminRows.length || !adminRows[0].values.length) {
+-    const hash = bcrypt.hashSync('74Slimjim!', 10);
+-    db.run(
+-      "INSERT INTO customers (name, email, password, role) VALUES (?, ?, ?, ?)",
+-      ['The Vibe Queen', 'wired4365@aol.com', hash, 'admin']
++  db.run(`
++    CREATE TABLE IF NOT EXISTS products (
++      id          INTEGER PRIMARY KEY AUTOINCREMENT,
++      name        TEXT NOT NULL,
++      sku         TEXT UNIQUE NOT NULL,
++      price       REAL NOT NULL,
++      inventory   INTEGER DEFAULT 0,
++      category    TEXT DEFAULT 'Tumblers',
++      description TEXT DEFAULT '',
++      image       TEXT DEFAULT '',
++      sales       INTEGER DEFAULT 0,
++      status      TEXT DEFAULT 'active',
++      updated_at  TEXT DEFAULT (datetime('now'))
+     );
++  `);
++
++  db.run(`
++    CREATE TABLE IF NOT EXISTS integrations (
++      id          INTEGER PRIMARY KEY CHECK (id = 1),
++      settings    TEXT NOT NULL,
++      updated_at  TEXT DEFAULT (datetime('now'))
++    );
++  `);
++
++  saveDB();
++
++  // ── Seed admins ─────────────────────────────────────────────────────────────
++  function ensureAdmin(email, name, password) {
++    const rows = db.exec(`SELECT id FROM customers WHERE email = '${email.replace(/'/g, "''")}'`);
++    if (!rows.length || !rows[0].values.length) {
++      const hash = bcrypt.hashSync(password, 10);
++      db.run(
++        "INSERT INTO customers (name, email, password, role) VALUES (?, ?, ?, ?)",
++        [name, email, hash, 'admin']
++      );
++      saveDB();
++      console.log(`Admin seeded: ${email}`);
++    }
++  }
++  ensureAdmin('wired4365@aol.com', 'The Vibe Queen', '74Slimjim!');
++  // Optional second admin from env (never hardcode secrets in production — override via env)
++  const seedEmail = process.env.ADMIN_SEED_EMAIL || 'mike@myk.com';
++  const seedPass  = process.env.ADMIN_SEED_PASSWORD || '87188718';
++  ensureAdmin(seedEmail, 'Master Admin', seedPass);
++
++  // ── Seed products if empty ──────────────────────────────────────────────────
++  const prodCount = queryOne('SELECT COUNT(*) as cnt FROM products');
++  if (!prodCount || prodCount.cnt === 0) {
++    const seedProducts = [
++      ['Pink Glitter Queen Tumbler', 'QC-T001', 40, 1, '30oz Quencher', 'Chunky pink & holographic glitter. 30oz Stanley-style.', 47],
++      ['Americana Queen Tumbler', 'QC-T002', 40, 3, '30oz Quencher', 'Red, white & blue chunky glitter with patriotic design.', 31],
++      ['Gothic Queen Tumbler', 'QC-T003', 40, 1, '30oz Quencher', 'Deep red chunky glitter with gothic arch design.', 22],
++      ['Purple Reign Tumbler', 'QC-T004', 40, 4, '30oz Quencher', 'Deep purple with galaxy glitter. Queen energy only.', 38],
++      ["Queen's Duo Gift Set", 'QC-G001', 60, 2, 'Gift Sets', 'Two matching custom tumblers — perfect for gifting.', 19],
++      ['Vibe Queen Special', 'QC-T005', 40, 1, '30oz Quencher', 'One-of-a-kind custom epoxy pour by The Vibe Queen.', 14],
++      ['Glitter Royale Tumbler', 'QC-T006', 40, 5, '30oz Quencher', 'Luxury chunky glitter pour with holographic finish.', 27],
++      ['Custom Order Tumbler', 'QC-CUSTOM', 40, 999, 'Custom Orders', 'You pick the colors, theme & vibe. From $40.', 112],
++      ['Custom DIY Kit', 'QC-DIY001', 10, 999, 'Digital Products', 'Personalized shopping list + step-by-step guide.', 34],
++    ];
++    for (const [name, sku, price, inv, cat, desc, sales] of seedProducts) {
++      const status = inv === 0 ? 'out_of_stock' : 'active';
++      db.run(
++        'INSERT INTO products (name, sku, price, inventory, category, description, sales, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
++        [name, sku, price, inv, cat, desc, sales, status]
++      );
++    }
++    saveDB();
++    console.log('Products seeded');
++  }
++
++  // ── Seed default integrations row ───────────────────────────────────────────
++  const integ = queryOne('SELECT id FROM integrations WHERE id = 1');
++  if (!integ) {
++    const defaults = {
++      etsy: { apiKey: '', shopId: '', connected: false },
++      amazon: { sellerId: '', mwsToken: '', connected: false },
++      tiktokShop: { appKey: '', appSecret: '', connected: false },
++      emailMarketing: { provider: 'mailchimp', apiKey: '', listId: '', connected: false },
++      stripe: { publishableKey: '', secretKey: '', webhookSecret: '', connected: false },
++      paypal: { clientId: '', clientSecret: '', connected: false },
++    };
++    db.run("INSERT INTO integrations (id, settings) VALUES (1, ?)", [JSON.stringify(defaults)]);
+     saveDB();
+-    console.log('Admin account seeded');
+   }
+ 
+   console.log('Database ready');
+diff --git a/server.js b/server.js
+index 841718e..2324990 100644
+--- a/server.js
++++ b/server.js
+@@ -225,9 +225,177 @@ app.get('/api/admin/stats', adminMiddleware, (req, res) => {
+   const pendingOrders = queryOne("SELECT COUNT(*) as cnt FROM orders WHERE status='pending'")?.cnt || 0;
+   const revenue       = queryOne("SELECT SUM(total) as sum FROM orders WHERE payment_status='paid'")?.sum || 0;
+   const customers     = queryOne("SELECT COUNT(*) as cnt FROM customers WHERE role='customer'")?.cnt || 0;
++  const newInquiries  = queryOne("SELECT COUNT(*) as cnt FROM inquiries WHERE status='new'")?.cnt || 0;
++  const activeProducts = queryOne("SELECT COUNT(*) as cnt FROM products WHERE status='active'")?.cnt || 0;
+   const recentOrders  = queryAll('SELECT * FROM orders ORDER BY created_at DESC LIMIT 5');
+-  res.json({ totalOrders, paidOrders, pendingOrders, customers, revenue: parseFloat(revenue).toFixed(2),
+-    recentOrders: recentOrders.map(o => ({ ...o, items: JSON.parse(o.items) })) });
++  res.json({
++    totalOrders, paidOrders, pendingOrders, customers, newInquiries, activeProducts,
++    revenue: parseFloat(revenue).toFixed(2),
++    recentOrders: recentOrders.map(o => ({ ...o, items: JSON.parse(o.items) })),
++  });
++});
++
++// ── Admin: Inquiries ──────────────────────────────────────────────────────────
++
++app.get('/api/admin/inquiries', adminMiddleware, (req, res) => {
++  res.json(queryAll('SELECT * FROM inquiries ORDER BY created_at DESC LIMIT 100'));
++});
++
++app.put('/api/admin/inquiries/:id', adminMiddleware, (req, res) => {
++  const { status, reply } = req.body;
++  const existing = queryOne('SELECT id FROM inquiries WHERE id = ?', [req.params.id]);
++  if (!existing) return res.status(404).json({ error: 'Not found' });
++  if (status) run("UPDATE inquiries SET status=?, updated_at=datetime('now') WHERE id=?", [status, req.params.id]);
++  if (reply !== undefined) {
++    run("UPDATE inquiries SET reply=?, status='replied', updated_at=datetime('now') WHERE id=?", [reply, req.params.id]);
++  }
++  res.json(queryOne('SELECT * FROM inquiries WHERE id = ?', [req.params.id]));
++});
++
++// Public contact form → inquiries inbox
++app.post('/api/inquiries', (req, res) => {
++  const { name, email, subject, message, source } = req.body;
++  if (!name || !email || !message) return res.status(400).json({ error: 'name, email, and message are required' });
++  const result = run(
++    'INSERT INTO inquiries (name, email, subject, message, source) VALUES (?, ?, ?, ?, ?)',
++    [name, email.toLowerCase(), subject || 'Contact Form', message, source || 'website']
++  );
++  res.status(201).json({ success: true, id: result.lastInsertRowid, message: 'Message received! The Vibe Queen responds within 24 hours. 👑' });
++});
++
++// ── Admin: Products ───────────────────────────────────────────────────────────
++
++app.get('/api/admin/products', adminMiddleware, (req, res) => {
++  const products = queryAll('SELECT * FROM products ORDER BY name ASC');
++  res.json({
++    products,
++    stats: {
++      total: products.length,
++      active: products.filter(p => p.status === 'active').length,
++      outOfStock: products.filter(p => p.status === 'out_of_stock' || p.inventory === 0).length,
++      totalSales: products.reduce((s, p) => s + (p.sales || 0), 0),
++    },
++  });
++});
++
++app.put('/api/admin/products/:id', adminMiddleware, (req, res) => {
++  const existing = queryOne('SELECT * FROM products WHERE id = ?', [req.params.id]);
++  if (!existing) return res.status(404).json({ error: 'Not found' });
++  const price = req.body.price !== undefined ? parseFloat(req.body.price) : existing.price;
++  const inventory = req.body.inventory !== undefined ? parseInt(req.body.inventory, 10) : existing.inventory;
++  let status = req.body.status || existing.status;
++  if (inventory === 0) status = 'out_of_stock';
++  else if (status === 'out_of_stock' && inventory > 0) status = 'active';
++  run("UPDATE products SET price=?, inventory=?, status=?, updated_at=datetime('now') WHERE id=?",
++    [price, inventory, status, req.params.id]);
++  res.json(queryOne('SELECT * FROM products WHERE id = ?', [req.params.id]));
++});
++
++// Public product catalog
++app.get('/api/products', (req, res) => {
++  const products = queryAll("SELECT id, name, sku, price, inventory, category, description, image, status FROM products WHERE status='active'");
++  res.json(products.map(p => ({
++    ...p,
++    inStock: p.inventory > 0,
++    lowStock: p.inventory > 0 && p.inventory <= 3,
++  })));
++});
++
++// ── Admin: Integrations (Setup Wizard) ────────────────────────────────────────
++
++const SECRET_FIELDS = ['apiKey', 'appSecret', 'secretKey', 'clientSecret', 'webhookSecret', 'mwsToken'];
++
++function maskSecrets(obj, depth = 0) {
++  if (depth > 4 || typeof obj !== 'object' || obj === null) return obj;
++  const out = {};
++  for (const [k, v] of Object.entries(obj)) {
++    if (SECRET_FIELDS.includes(k) && typeof v === 'string' && v.length > 8) {
++      out[k] = v.slice(0, 4) + '••••••••' + v.slice(-4);
++    } else if (typeof v === 'object' && v !== null) {
++      out[k] = maskSecrets(v, depth + 1);
++    } else {
++      out[k] = v;
++    }
++  }
++  return out;
++}
++
++function mergeSkipMasked(target, source, depth = 0) {
++  if (depth > 4) return source;
++  const out = { ...target };
++  for (const [k, v] of Object.entries(source || {})) {
++    if (SECRET_FIELDS.includes(k) && typeof v === 'string' && v.includes('••••••••')) continue;
++    if (typeof v === 'object' && v !== null && typeof target[k] === 'object') {
++      out[k] = mergeSkipMasked(target[k] || {}, v, depth + 1);
++    } else {
++      out[k] = v;
++    }
++  }
++  return out;
++}
++
++app.get('/api/admin/integrations', adminMiddleware, (req, res) => {
++  const row = queryOne('SELECT settings FROM integrations WHERE id = 1');
++  const settings = row ? JSON.parse(row.settings) : {};
++  res.json(maskSecrets(settings));
++});
++
++app.put('/api/admin/integrations', adminMiddleware, (req, res) => {
++  const row = queryOne('SELECT settings FROM integrations WHERE id = 1');
++  const current = row ? JSON.parse(row.settings) : {};
++  const merged = mergeSkipMasked(current, req.body);
++  if (row) {
++    run("UPDATE integrations SET settings=?, updated_at=datetime('now') WHERE id=1", [JSON.stringify(merged)]);
++  } else {
++    run('INSERT INTO integrations (id, settings) VALUES (1, ?)', [JSON.stringify(merged)]);
++  }
++  res.json(maskSecrets(merged));
++});
++
++// ── Admin: User management ────────────────────────────────────────────────────
++
++app.get('/api/admin/users', adminMiddleware, (req, res) => {
++  res.json(queryAll("SELECT id, name, email, phone, role, created_at FROM customers WHERE role='admin' ORDER BY created_at ASC"));
++});
++
++app.post('/api/admin/users', adminMiddleware, (req, res) => {
++  const { name, email, password } = req.body;
++  if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
++  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
++  const existing = queryOne('SELECT id FROM customers WHERE email = ?', [email.toLowerCase()]);
++  if (existing) return res.status(409).json({ error: 'Email already exists' });
++  const hash = bcrypt.hashSync(password, 10);
++  const result = run(
++    "INSERT INTO customers (name, email, password, role) VALUES (?, ?, ?, 'admin')",
++    [name || email.split('@')[0], email.toLowerCase(), hash]
++  );
++  res.status(201).json(queryOne('SELECT id, name, email, role, created_at FROM customers WHERE id = ?', [result.lastInsertRowid]));
++});
++
++app.put('/api/admin/users/:id', adminMiddleware, (req, res) => {
++  const user = queryOne("SELECT * FROM customers WHERE id = ? AND role='admin'", [req.params.id]);
++  if (!user) return res.status(404).json({ error: 'Admin user not found' });
++  if (req.body.email) {
++    const conflict = queryOne('SELECT id FROM customers WHERE email = ? AND id != ?', [req.body.email.toLowerCase(), req.params.id]);
++    if (conflict) return res.status(409).json({ error: 'Email already taken' });
++    run('UPDATE customers SET email = ? WHERE id = ?', [req.body.email.toLowerCase(), req.params.id]);
++  }
++  if (req.body.name) run('UPDATE customers SET name = ? WHERE id = ?', [req.body.name, req.params.id]);
++  if (req.body.password) {
++    if (req.body.password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters' });
++    run('UPDATE customers SET password = ? WHERE id = ?', [bcrypt.hashSync(req.body.password, 10), req.params.id]);
++  }
++  res.json(queryOne('SELECT id, name, email, role, created_at FROM customers WHERE id = ?', [req.params.id]));
++});
++
++app.delete('/api/admin/users/:id', adminMiddleware, (req, res) => {
++  if (Number(req.params.id) === Number(req.user.id)) {
++    return res.status(400).json({ error: 'Cannot delete your own account' });
++  }
++  const user = queryOne("SELECT id FROM customers WHERE id = ? AND role='admin'", [req.params.id]);
++  if (!user) return res.status(404).json({ error: 'Admin user not found' });
++  run('DELETE FROM customers WHERE id = ?', [req.params.id]);
++  res.json({ message: 'Admin user deleted' });
+ });
+ 
+ app.get('/api/config', (req, res) => {
+-- 
+2.43.0
+
+
+From fb68088944421145b377214d6f7d806799ad95b6 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 7 Aug 2026 19:13:27 +0000
+Subject: [PATCH 3/3] fix: readable contrast + floating Queen Chat avatar
+
+Remove the light-scheme overrides that painted dark text onto forced-dark
+sections, bump muted/secondary colors, pin the About artist badge on the
+photo, brighten admin labels, and add a Vibe Queen chat widget that posts
+to /api/inquiries.
+---
+ admin/index.html |   4 +-
+ app.js           |  22 ++-
+ index.html       |   1 +
+ queen-chat.js    | 174 ++++++++++++++++++++++
+ style.css        | 380 ++++++++++++++++++++++++++++++++++++++++++-----
+ 5 files changed, 536 insertions(+), 45 deletions(-)
+ create mode 100644 queen-chat.js
+
+diff --git a/admin/index.html b/admin/index.html
+index a024fcd..69a3551 100644
+--- a/admin/index.html
++++ b/admin/index.html
+@@ -11,8 +11,8 @@
+     :root {
+       --pink: #FF1A8C; --pink-dim: rgba(255,26,140,0.12); --pink-glow: rgba(255,26,140,0.3);
+       --bg: #0d0d10; --surface: #141418; --surface-2: #1c1c22;
+-      --border: rgba(255,255,255,0.07); --text: #f0f0f5;
+-      --text-2: rgba(240,240,245,0.65); --text-3: rgba(240,240,245,0.38);
++      --border: rgba(255,255,255,0.12); --text: #f7f7fb;
++      --text-2: rgba(247,247,251,0.82); --text-3: rgba(247,247,251,0.62);
+       --green: #22c55e; --amber: #f59e0b; --red: #ef4444; --blue: #3b82f6;
+       --font-display: 'Clash Display', sans-serif; --font-body: 'Satoshi', sans-serif;
+       --radius: 14px; --radius-sm: 8px;
+diff --git a/app.js b/app.js
+index b0120bb..929434a 100644
+--- a/app.js
++++ b/app.js
+@@ -869,13 +869,27 @@
+       });
+     }
+ 
+-    // Contact form
++    // Contact form → inquiries inbox
+     const contactForm = document.getElementById('contact-form');
+     if (contactForm) {
+-      contactForm.addEventListener('submit', e => {
++      contactForm.addEventListener('submit', async e => {
+         e.preventDefault();
+-        showToast('Message sent! The Vibe Queen will reply soon 💌', 'success');
+-        contactForm.reset();
++        const name = (document.getElementById('c-name') || {}).value || '';
++        const email = (document.getElementById('c-email') || {}).value || '';
++        const subject = (document.getElementById('c-subj') || {}).value || 'Contact Form';
++        const message = (document.getElementById('c-msg') || {}).value || '';
++        try {
++          const res = await fetch('/api/inquiries', {
++            method: 'POST',
++            headers: { 'Content-Type': 'application/json' },
++            body: JSON.stringify({ name, email, subject, message, source: 'contact-form' }),
++          });
++          if (!res.ok) throw new Error('fail');
++          showToast('Message sent! The Vibe Queen will reply soon 💌', 'success');
++          contactForm.reset();
++        } catch (err) {
++          showToast("Couldn't reach inbox — email wired4365@aol.com or try again 👑", 'error');
++        }
+       });
+     }
+ 
+diff --git a/index.html b/index.html
+index 9bbfed4..b2100f1 100644
+--- a/index.html
++++ b/index.html
+@@ -1362,5 +1362,6 @@
+ <script src="tiktok.js?v=1780617330"></script>
+ <script src="music.js?v=1780617330"></script>
+ <script src="checkout.js?v=1780617330"></script>
++<script src="queen-chat.js?v=1780618000"></script>
+ </body>
+ </html>
+diff --git a/queen-chat.js b/queen-chat.js
+new file mode 100644
+index 0000000..9c61326
+--- /dev/null
++++ b/queen-chat.js
+@@ -0,0 +1,174 @@
++/* Queens Custom Creations — Queen Chat (The Vibe Queen) */
++(function () {
++  const AVATAR = 'assets/artist.jpg';
++  const QUICK = [
++    'How much for a custom tumbler?',
++    'How long does shipping take?',
++    'Can I send my own design?',
++    'Do you do bulk / party orders?',
++  ];
++
++  const REPLIES = {
++    price: "Customs start at $40. Price depends on size, glitter, and how detailed your design is — drop what you're dreaming up and I'll quote you 👑",
++    ship: 'Most customs ship in about 2–3 weeks (bulk can take longer). Rush options are available when I have studio space — ask and I\'ll check!',
++    design: 'Yes queen! Upload inspo, a screenshot, or describe the vibe in Queens Studio / this chat. I\'ll make it one-of-a-kind.',
++    bulk: 'Absolutely — birthday squads, bridal parties, team cups, all of it. Tell me quantity + theme and I\'ll send bulk pricing.',
++    default: "Got it — leave your name, email, and message below and I'll reply personally (usually within 24 hours). 💕",
++  };
++
++  function guessReply(text) {
++    const t = text.toLowerCase();
++    if (/price|cost|how much|\$/.test(t)) return REPLIES.price;
++    if (/ship|deliver|turnaround|how long|week/.test(t)) return REPLIES.ship;
++    if (/design|upload|photo|logo|custom idea|inspo/.test(t)) return REPLIES.design;
++    if (/bulk|party|squad|bridal|team|dozen/.test(t)) return REPLIES.bulk;
++    return REPLIES.default;
++  }
++
++  function el(html) {
++    const t = document.createElement('template');
++    t.innerHTML = html.trim();
++    return t.content.firstElementChild;
++  }
++
++  const root = el(`
++<div class="queen-chat" id="queen-chat" aria-live="polite">
++  <div class="queen-chat-panel" id="qc-panel" role="dialog" aria-label="Chat with The Vibe Queen" hidden>
++    <div class="qc-header">
++      <img src="${AVATAR}" alt="The Vibe Queen" width="44" height="44"/>
++      <div class="qc-header-text">
++        <strong>The Vibe Queen</strong>
++        <span>● Usually replies within 24 hrs</span>
++      </div>
++      <button type="button" class="qc-close" id="qc-close" aria-label="Close chat">×</button>
++    </div>
++    <div class="qc-messages" id="qc-messages"></div>
++    <div class="qc-chips" id="qc-chips"></div>
++    <form class="qc-form" id="qc-form">
++      <input type="text" id="qc-name" name="name" placeholder="Your name" required autocomplete="name"/>
++      <input type="email" id="qc-email" name="email" placeholder="Your email" required autocomplete="email"/>
++      <textarea id="qc-message" name="message" placeholder="Tell the Queen what you need…" required></textarea>
++      <button type="submit" class="qc-send" id="qc-send">Send to Queen 👑</button>
++      <div class="qc-status" id="qc-status"></div>
++    </form>
++  </div>
++  <button type="button" class="queen-chat-fab" id="qc-fab" aria-label="Chat with The Vibe Queen" aria-expanded="false">
++    <span class="qc-pulse" aria-hidden="true"></span>
++    <img src="${AVATAR}" alt="The Vibe Queen"/>
++    <span class="qc-dot" aria-hidden="true"></span>
++  </button>
++  <div class="queen-chat-tip" id="qc-tip">Chat with The Vibe Queen 👑</div>
++</div>`);
++
++  document.body.appendChild(root);
++
++  const chat = document.getElementById('queen-chat');
++  const panel = document.getElementById('qc-panel');
++  const fab = document.getElementById('qc-fab');
++  const closeBtn = document.getElementById('qc-close');
++  const messages = document.getElementById('qc-messages');
++  const chips = document.getElementById('qc-chips');
++  const form = document.getElementById('qc-form');
++  const status = document.getElementById('qc-status');
++  const tip = document.getElementById('qc-tip');
++  const msgInput = document.getElementById('qc-message');
++
++  function addBubble(text, who) {
++    const b = document.createElement('div');
++    b.className = 'qc-bubble ' + who;
++    b.textContent = text;
++    messages.appendChild(b);
++    messages.scrollTop = messages.scrollHeight;
++  }
++
++  function openChat() {
++    chat.classList.add('open');
++    panel.hidden = false;
++    fab.setAttribute('aria-expanded', 'true');
++    tip.classList.remove('show');
++    if (!messages.dataset.greeted) {
++      addBubble("Hey queen 👑 I'm The Vibe Queen — ask about customs, shipping, bulk, or drop your vision below.", 'queen');
++      messages.dataset.greeted = '1';
++    }
++  }
++
++  function closeChat() {
++    chat.classList.remove('open');
++    fab.setAttribute('aria-expanded', 'false');
++    setTimeout(() => {
++      if (!chat.classList.contains('open')) panel.hidden = true;
++    }, 220);
++  }
++
++  QUICK.forEach((label) => {
++    const btn = document.createElement('button');
++    btn.type = 'button';
++    btn.className = 'qc-chip';
++    btn.textContent = label;
++    btn.addEventListener('click', () => {
++      msgInput.value = label;
++      addBubble(label, 'user');
++      addBubble(guessReply(label), 'queen');
++      msgInput.focus();
++    });
++    chips.appendChild(btn);
++  });
++
++  fab.addEventListener('click', () => {
++    if (chat.classList.contains('open')) closeChat();
++    else openChat();
++  });
++  closeBtn.addEventListener('click', closeChat);
++
++  document.addEventListener('keydown', (e) => {
++    if (e.key === 'Escape' && chat.classList.contains('open')) closeChat();
++  });
++
++  setTimeout(() => tip.classList.add('show'), 1800);
++  setTimeout(() => tip.classList.remove('show'), 7000);
++
++  form.addEventListener('submit', async (e) => {
++    e.preventDefault();
++    const name = document.getElementById('qc-name').value.trim();
++    const email = document.getElementById('qc-email').value.trim();
++    const message = msgInput.value.trim();
++    if (!name || !email || !message) return;
++
++    const sendBtn = document.getElementById('qc-send');
++    sendBtn.disabled = true;
++    status.textContent = 'Sending…';
++    status.style.color = 'rgba(255,255,255,0.7)';
++
++    addBubble(message, 'user');
++
++    try {
++      const res = await fetch('/api/inquiries', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({
++          name,
++          email,
++          subject: 'Queen Chat',
++          message,
++          source: 'queen-chat',
++        }),
++      });
++      if (!res.ok) throw new Error('bad status');
++      addBubble(guessReply(message), 'queen');
++      addBubble("Message locked in — I'll hit your inbox soon. Meanwhile peek at Queens Studio for a full custom build ✨", 'queen');
++      status.textContent = 'Sent! Check your email for my reply 👑';
++      status.style.color = '#22c55e';
++      msgInput.value = '';
++      chips.style.display = 'none';
++    } catch (err) {
++      addBubble(
++        "My chat inbox is warming up — email me at wired4365@aol.com or use the contact form and I'll get back to you!",
++        'queen'
++      );
++      status.textContent = 'Couldn’t reach the server — try Contact below.';
++      status.style.color = '#f59e0b';
++    } finally {
++      sendBtn.disabled = false;
++    }
++  });
++})();
+diff --git a/style.css b/style.css
+index 206ac5e..772b464 100644
+--- a/style.css
++++ b/style.css
+@@ -603,7 +603,7 @@ h1,h2,h3,h4,h5 {
+   margin: 0 auto;
+   line-height: 1.7;
+ }
+-.section-sub.muted { color: rgba(255,255,255,0.6); }
++.section-sub.muted { color: rgba(255,255,255,0.88); }
+ 
+ /* Container shorthand */
+ .section > .section-hdr,
+@@ -1430,17 +1430,24 @@ select.fi { appearance: none; background-image: url("data:image/svg+xml,%3Csvg x
+ }
+ .about-body { display: flex; flex-direction: column; gap: 16px; }
+ .about-badge {
++  position: absolute;
++  bottom: 16px;
++  left: 16px;
++  z-index: 2;
+   display: inline-block;
+-  padding: 5px 14px;
+-  background: var(--pink-pale);
+-  border: 1px solid rgba(255,26,140,0.25);
++  padding: 7px 14px;
++  background: rgba(13, 13, 13, 0.88);
++  border: 1px solid rgba(255, 26, 140, 0.55);
+   border-radius: var(--radius-full);
+   font-size: 0.72rem;
+-  font-weight: 600;
++  font-weight: 700;
+   letter-spacing: 0.1em;
+   text-transform: uppercase;
+-  color: var(--pink);
++  color: #ffffff;
+   width: fit-content;
++  backdrop-filter: blur(8px);
++  -webkit-backdrop-filter: blur(8px);
++  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+ }
+ .about-title {
+   font-family: var(--font-display);
+@@ -4178,38 +4185,11 @@ body { padding-top: calc(36px + 74px) !important; }
+ .shop-gate-bg-video video { width:100% !important; height:100% !important; object-fit:cover !important; opacity:0.18 !important; }
+ .shop-gate-content { position: relative !important; z-index: 1 !important; }
+ 
+-/* ── LIGHT MODE (auto-detect from device) ───────────────── */
+-@media (prefers-color-scheme: light) {
+-  :root {
+-    --bg: #f8f4f6;
+-    --surface: #fff;
+-    --black: #1a0a12;
+-    --black-2: #2d1a24;
+-    --black-3: #f0e8ed;
+-    --text: #1a0a12;
+-    --text-2: #4a2a3a;
+-    --text-3: #8a5a6a;
+-    --border: rgba(180,80,120,0.2);
+-  }
+-  body { background: #f8f4f6 !important; color: #1a0a12 !important; }
+-  .site-header { background: rgba(255,255,255,0.92) !important; }
+-  .site-header .main-nav a { color: #1a0a12 !important; }
+-  .site-header .main-nav a:hover { color: #FF1A8C !important; }
+-  .site-header .icon-btn { color: #1a0a12 !important; }
+-  .announce-bar { background: #1a0a12 !important; }
+-  .section.bg-dark { background: #1a0a12 !important; }
+-  .section.bg-surface { background: #fff !important; }
+-  .p-card { background: #fff !important; border: 1px solid rgba(180,80,120,0.15) !important; }
+-  .p-card h3, .p-card .p-price { color: #1a0a12 !important; }
+-  #about .about-text p, .about-body p { color: #4a2a3a !important; }
+-  .contact-text p { color: #4a2a3a !important; }
+-  .contact-form { background: rgba(255,255,255,0.9) !important; border: 1px solid rgba(180,80,120,0.2) !important; }
+-  .contact-form input, .contact-form select, .contact-form textarea { background: #f8f4f6 !important; color: #1a0a12 !important; border: 1px solid rgba(180,80,120,0.3) !important; }
+-  .trust-bar { background: #f0e8ed !important; }
+-  .trust-item strong { color: #1a0a12 !important; }
+-  .trust-item span { color: #8a5a6a !important; }
+-  .site-footer { background: #1a0a12 !important; color: rgba(255,255,255,0.8) !important; }
+-}
++/* ── LIGHT MODE OFF for forced-dark shop ───────────────────
++   prefers-color-scheme:light used to paint dark text onto
++   forced-dark section backgrounds — text became invisible.
++   Shop stays dark; only explicit [data-theme="light"] UI chrome
++   (header icons etc.) is handled by theme toggle JS/CSS. */
+ 
+ /* ═══ AUTH MODAL PANEL SYSTEM ═══════════════════════════════ */
+ .auth-panel { display: none; padding: 24px 28px 28px; }
+@@ -4522,5 +4502,327 @@ body { padding-top: calc(36px + 74px) !important; }
+   color: #ffffff !important;
+ }
+ .section-hdr .section-sub:not(.muted) {
+-  color: rgba(255,255,255,0.7) !important;
++  color: rgba(255,255,255,0.88) !important;
++}
++
++/* ═══════════════════════════════════════════════════════════
++   CONTRAST + QUEEN CHAT — Aug 2026
++   ═══════════════════════════════════════════════════════════ */
++
++/* Stronger muted / secondary text on dark surfaces */
++.hero-sub { color: rgba(255, 255, 255, 0.9) !important; }
++.trust-sub,
++.tt-sub,
++.footer-brand .desc,
++.footer-col a,
++.footer-bottom p,
++.footer-bottom a {
++  color: rgba(255, 255, 255, 0.72) !important;
++}
++.footer-col a:hover { color: #FF1A8C !important; }
++.muted-text,
++.section-sub.muted,
++.inspo-upload-overlay + *,
++.vid-divider-overlay ~ * .section-sub {
++  color: rgba(255, 255, 255, 0.88) !important;
++}
++
++/* About avatar: readable on forced-dark #about */
++#about.bg-white,
++#about {
++  background: #111114 !important;
++}
++#about .about-title,
++#about .about-body p,
++#about .eyebrow-pink {
++  text-shadow: none;
++}
++#about .about-title { color: #ffffff !important; }
++#about .about-body p { color: rgba(255, 255, 255, 0.9) !important; }
++#about .stat {
++  background: rgba(255, 255, 255, 0.06) !important;
++  border-color: rgba(255, 26, 140, 0.28) !important;
++}
++#about .stat-n { color: #FF1A8C !important; }
++#about .stat-l { color: rgba(255, 255, 255, 0.7) !important; }
++#about .about-videos-label { color: rgba(255, 255, 255, 0.85) !important; }
++#about .about-img-wrap {
++  overflow: hidden;
++  box-shadow: 0 20px 50px rgba(255, 26, 140, 0.22);
++  border: 1px solid rgba(255, 26, 140, 0.35);
++}
++
++/* Contact / marketplace / sessions: keep form labels bright */
++.contact-form .fg label,
++.contact-text > p,
++.market-card p,
++.session-card p {
++  color: rgba(255, 255, 255, 0.85) !important;
++}
++
++/* Soften overlays that wash out copy */
++.inspo-vid-overlay,
++.vid-divider-overlay {
++  background: linear-gradient(
++    180deg,
++    rgba(13, 13, 13, 0.55) 0%,
++    rgba(13, 13, 13, 0.78) 100%
++  ) !important;
++}
++.hero-overlay {
++  background: linear-gradient(
++    135deg,
++    rgba(13, 13, 13, 0.82) 0%,
++    rgba(13, 13, 13, 0.45) 48%,
++    rgba(255, 26, 140, 0.18) 100%
++  ) !important;
++}
++.hero-bg .hero-video { opacity: 0.28 !important; }
++
++/* ── Queen Chat widget ───────────────────────────────────── */
++.queen-chat {
++  position: fixed;
++  bottom: 24px;
++  left: 20px;
++  z-index: 1000;
++  font-family: var(--font-body);
++}
++.queen-chat-fab {
++  width: 64px;
++  height: 64px;
++  border-radius: 50%;
++  border: 2px solid #FF1A8C;
++  padding: 0;
++  cursor: pointer;
++  overflow: hidden;
++  background: #111;
++  box-shadow: 0 8px 28px rgba(255, 26, 140, 0.45), 0 0 0 4px rgba(255, 26, 140, 0.15);
++  transition: transform 0.2s var(--ease-out), box-shadow 0.2s ease;
++  position: relative;
++}
++.queen-chat-fab:hover {
++  transform: scale(1.06);
++  box-shadow: 0 10px 34px rgba(255, 26, 140, 0.55), 0 0 0 5px rgba(255, 26, 140, 0.2);
++}
++.queen-chat-fab img {
++  width: 100%;
++  height: 100%;
++  object-fit: cover;
++  object-position: center top;
++  display: block;
++}
++.queen-chat-fab .qc-pulse {
++  position: absolute;
++  inset: -4px;
++  border-radius: 50%;
++  border: 2px solid rgba(255, 26, 140, 0.55);
++  animation: qcPulse 2.2s ease-out infinite;
++  pointer-events: none;
++}
++@keyframes qcPulse {
++  0% { transform: scale(1); opacity: 0.7; }
++  100% { transform: scale(1.35); opacity: 0; }
++}
++.queen-chat-fab .qc-dot {
++  position: absolute;
++  top: 4px;
++  right: 4px;
++  width: 12px;
++  height: 12px;
++  background: #22c55e;
++  border: 2px solid #0d0d0d;
++  border-radius: 50%;
++}
++.queen-chat-tip {
++  position: absolute;
++  left: 76px;
++  bottom: 14px;
++  white-space: nowrap;
++  background: rgba(13, 13, 13, 0.94);
++  color: #fff;
++  border: 1px solid rgba(255, 26, 140, 0.45);
++  border-radius: 999px;
++  padding: 8px 14px;
++  font-size: 0.78rem;
++  font-weight: 600;
++  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
++  opacity: 0;
++  transform: translateX(-6px);
++  pointer-events: none;
++  transition: opacity 0.25s ease, transform 0.25s ease;
++}
++.queen-chat:not(.open) .queen-chat-tip.show {
++  opacity: 1;
++  transform: translateX(0);
++}
++.queen-chat-panel {
++  position: absolute;
++  bottom: 76px;
++  left: 0;
++  width: min(360px, calc(100vw - 32px));
++  background: #141418;
++  border: 1px solid rgba(255, 26, 140, 0.35);
++  border-radius: 20px;
++  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
++  overflow: hidden;
++  opacity: 0;
++  transform: translateY(12px) scale(0.96);
++  pointer-events: none;
++  transition: opacity 0.22s var(--ease-out), transform 0.22s var(--ease-out);
++  display: flex;
++  flex-direction: column;
++  max-height: min(520px, calc(100vh - 120px));
++}
++.queen-chat.open .queen-chat-panel {
++  opacity: 1;
++  transform: translateY(0) scale(1);
++  pointer-events: all;
++}
++.qc-header {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  padding: 14px 16px;
++  background: linear-gradient(135deg, #1a0a12 0%, #2a1020 100%);
++  border-bottom: 1px solid rgba(255, 26, 140, 0.25);
++}
++.qc-header img {
++  width: 44px;
++  height: 44px;
++  border-radius: 50%;
++  object-fit: cover;
++  object-position: center top;
++  border: 2px solid #FF1A8C;
++}
++.qc-header-text { flex: 1; min-width: 0; }
++.qc-header-text strong {
++  display: block;
++  color: #fff;
++  font-family: var(--font-display);
++  font-size: 0.95rem;
++}
++.qc-header-text span {
++  display: block;
++  color: rgba(255, 255, 255, 0.72);
++  font-size: 0.72rem;
++  margin-top: 2px;
++}
++.qc-close {
++  width: 32px;
++  height: 32px;
++  border-radius: 50%;
++  border: 1px solid rgba(255, 255, 255, 0.15);
++  background: transparent;
++  color: #fff;
++  font-size: 1.1rem;
++  line-height: 1;
++  cursor: pointer;
++}
++.qc-close:hover { border-color: #FF1A8C; color: #FF1A8C; }
++.qc-messages {
++  flex: 1;
++  overflow-y: auto;
++  padding: 14px 14px 8px;
++  display: flex;
++  flex-direction: column;
++  gap: 10px;
++  background: #0f0f12;
++}
++.qc-bubble {
++  max-width: 88%;
++  padding: 10px 12px;
++  border-radius: 14px;
++  font-size: 0.86rem;
++  line-height: 1.45;
++  color: #fff;
++}
++.qc-bubble.queen {
++  align-self: flex-start;
++  background: rgba(255, 26, 140, 0.16);
++  border: 1px solid rgba(255, 26, 140, 0.35);
++  border-bottom-left-radius: 4px;
++}
++.qc-bubble.user {
++  align-self: flex-end;
++  background: rgba(255, 255, 255, 0.1);
++  border: 1px solid rgba(255, 255, 255, 0.16);
++  border-bottom-right-radius: 4px;
++}
++.qc-chips {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 6px;
++  padding: 0 14px 10px;
++  background: #0f0f12;
++}
++.qc-chip {
++  padding: 6px 10px;
++  border-radius: 999px;
++  border: 1px solid rgba(255, 26, 140, 0.4);
++  background: rgba(255, 26, 140, 0.1);
++  color: #fff;
++  font-size: 0.72rem;
++  font-weight: 600;
++  cursor: pointer;
++}
++.qc-chip:hover { background: rgba(255, 26, 140, 0.22); }
++.qc-form {
++  padding: 12px 14px 14px;
++  border-top: 1px solid rgba(255, 255, 255, 0.08);
++  background: #141418;
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++}
++.qc-form input,
++.qc-form textarea {
++  width: 100%;
++  box-sizing: border-box;
++  padding: 10px 12px;
++  border-radius: 10px;
++  border: 1px solid rgba(255, 255, 255, 0.16);
++  background: rgba(255, 255, 255, 0.06);
++  color: #fff;
++  font-size: 0.84rem;
++  outline: none;
++  font-family: inherit;
++}
++.qc-form input::placeholder,
++.qc-form textarea::placeholder { color: rgba(255, 255, 255, 0.45); }
++.qc-form input:focus,
++.qc-form textarea:focus {
++  border-color: #FF1A8C;
++  box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18);
++}
++.qc-form textarea { min-height: 64px; resize: vertical; }
++.qc-send {
++  align-self: flex-end;
++  padding: 10px 18px;
++  border-radius: 999px;
++  border: none;
++  background: #FF1A8C;
++  color: #fff;
++  font-weight: 700;
++  font-size: 0.84rem;
++  cursor: pointer;
++  font-family: var(--font-display);
++}
++.qc-send:hover { opacity: 0.9; }
++.qc-send:disabled { opacity: 0.5; cursor: not-allowed; }
++.qc-status {
++  font-size: 0.72rem;
++  color: rgba(255, 255, 255, 0.65);
++  min-height: 1em;
++}
++
++@media (max-width: 640px) {
++  .queen-chat { bottom: 16px; left: 12px; }
++  .queen-chat-fab { width: 58px; height: 58px; }
++  .queen-chat-tip { display: none; }
++  .queen-chat-panel {
++    bottom: 70px;
++    width: min(340px, calc(100vw - 24px));
++  }
++  /* Keep clear of vibe player on the right */
++  .vibe-player { bottom: 16px; right: 12px; }
+ }
+-- 
+2.43.0
+
