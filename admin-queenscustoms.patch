@@ -1,7 +1,7 @@
 From f13baf887e912358aefbc4aa9fdd551ff508d9f9 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 00:49:51 +0000
-Subject: [PATCH] feat: add Queens Customs admin portal at
+Subject: [PATCH 1/2] feat: add Queens Customs admin portal at
  admin.queenscustoms.shop
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -3588,6 +3588,43 @@ index 0000000..c074904
 +
 +// Expose globally so inline onclick handlers can access it
 +window.QC = QC;
+-- 
+2.43.0
+
+
+From 16b464a440c791f3a3e70166bd15d5dd33ab344a Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 7 Aug 2026 01:14:31 +0000
+Subject: [PATCH 2/2] fix: add admin.queenscustoms.shop to .godaddy and
+ vite.config allowedHosts
+
+---
+ .godaddy       | 5 ++++-
+ vite.config.js | 2 +-
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/.godaddy b/.godaddy
+index e12ef7a..434e249 100644
+--- a/.godaddy
++++ b/.godaddy
+@@ -11,6 +11,9 @@
+     "ltibyjmichael.com",
+     "www.ltibyjmichael.com",
+     "designbyjmichael.com",
+-    "www.designbyjmichael.com"
++    "www.designbyjmichael.com",
++    "queenscustoms.shop",
++    "www.queenscustoms.shop",
++    "admin.queenscustoms.shop"
+   ]
+ }
+diff --git a/vite.config.js b/vite.config.js
+index a731990..855460c 100644
+--- a/vite.config.js
++++ b/vite.config.js
+@@ -1 +1 @@
+-module.exports = { server: { allowedHosts: ['myk.ac', 'www.myk.ac', 'pate.myk.ac', 'lti.myk.ac', 'patemusic.live', 'www.patemusic.live', 'ltibyjmichael.com', 'www.ltibyjmichael.com', 'designbyjmichael.com', 'www.designbyjmichael.com'] }, preview: { allowedHosts: true } };
++module.exports = { server: { allowedHosts: ['myk.ac', 'www.myk.ac', 'pate.myk.ac', 'lti.myk.ac', 'patemusic.live', 'www.patemusic.live', 'ltibyjmichael.com', 'www.ltibyjmichael.com', 'designbyjmichael.com', 'www.designbyjmichael.com', 'queenscustoms.shop', 'www.queenscustoms.shop', 'admin.queenscustoms.shop'] }, preview: { allowedHosts: true } };
 -- 
 2.43.0
 
