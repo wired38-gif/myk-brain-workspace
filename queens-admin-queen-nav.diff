@@ -1,21 +1,3 @@
-From 54f41d135b752d488295d3bc4ac478787d846f16 Mon Sep 17 00:00:00 2001
-From: Cursor Agent <cursoragent@cursor.com>
-Date: Fri, 7 Aug 2026 23:58:23 +0000
-Subject: [PATCH] fix: restore visible Queen Chat on shop + Admin Queen finder
-
-Admin floating finder (queen-nav.js) for Ops/Setup navigation; stop
-/admin/* SPA fallback from swallowing JS assets; seed Setup Coach
-greeting; raise shop Queen Chat z-index and mobile position above
-Safari chrome; cache-bust CSS/JS.
----
- admin/index.html   | 159 ++++++++++++++++++
- admin/queen-nav.js | 399 +++++++++++++++++++++++++++++++++++++++++++++
- index.html         |   4 +-
- server.js          |   6 +-
- style.css          |  17 +-
- 5 files changed, 577 insertions(+), 8 deletions(-)
- create mode 100644 admin/queen-nav.js
-
 diff --git a/admin/index.html b/admin/index.html
 index 3828cc1..73c3eab 100644
 --- a/admin/index.html
@@ -717,6 +699,3 @@ index e43dec9..fc2f0fe 100644
 -  .vibe-player { bottom: 16px; right: 12px; }
 +  .vibe-player { bottom: 88px; right: 12px; }
  }
--- 
-2.43.0
-
