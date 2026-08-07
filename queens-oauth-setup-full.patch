@@ -1,7 +1,7 @@
 From 2f699e51ff2ef7bf8cd5b1e391fd606e66e6c283 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 19:06:29 +0000
-Subject: [PATCH 1/4] feat: rewrite admin portal with Operations and Setup
+Subject: [PATCH 1/5] feat: rewrite admin portal with Operations and Setup
  modes
 
 Complete self-contained admin portal matching Queens brand:
@@ -1723,7 +1723,7 @@ index 5ec354a..a024fcd 100644
 From d5fd9363969c644aca156ab7f55e157fc27f5dcc Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 19:07:15 +0000
-Subject: [PATCH 2/4] feat: add inquiries, products, integrations APIs for dual
+Subject: [PATCH 2/5] feat: add inquiries, products, integrations APIs for dual
  admin portal
 
 Backend support for Operations + Setup Wizard:
@@ -2058,7 +2058,7 @@ index 841718e..2324990 100644
 From fb68088944421145b377214d6f7d806799ad95b6 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 19:13:27 +0000
-Subject: [PATCH 3/4] fix: readable contrast + floating Queen Chat avatar
+Subject: [PATCH 3/5] fix: readable contrast + floating Queen Chat avatar
 
 Remove the light-scheme overrides that painted dark text onto forced-dark
 sections, bump muted/secondary colors, pin the About artist badge on the
@@ -2738,7 +2738,7 @@ index 206ac5e..772b464 100644
 From 75cd118993dc544bb055ccf8297aab0520ec3385 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 19:37:53 +0000
-Subject: [PATCH 4/4] feat: Stripe Connect + Google/Apple/Facebook OAuth in
+Subject: [PATCH 4/5] feat: Stripe Connect + Google/Apple/Facebook OAuth in
  Setup
 
 Add Setup Wizard Logins step for social providers, Stripe Connect
@@ -3820,6 +3820,145 @@ index 772b464..e43dec9 100644
  /* Dashboard tabs */
  .account-tabs, .dashboard-tabs-row {
    display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 1.2rem;
+-- 
+2.43.0
+
+
+From 4cf2de82e618c59a50e8785b69fa5a2b78141dff Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 7 Aug 2026 19:48:46 +0000
+Subject: [PATCH 5/5] feat: seed Queenscustoms25 admin; clarify Setup uses
+ shop-owner OAuth keys
+
+Add queenscustoms25@gmail.com admin (password hashed on seed) and make
+Setup copy clear that Stripe/Google/Apple/Facebook credentials are entered
+by the shop admin from their own developer accounts.
+---
+ .env.example     |  3 ++-
+ admin/index.html | 14 +++++++-------
+ db.js            | 40 +++++++++++++++++++++++++++++++---------
+ 3 files changed, 40 insertions(+), 17 deletions(-)
+
+diff --git a/.env.example b/.env.example
+index 39a678c..a604cdf 100644
+--- a/.env.example
++++ b/.env.example
+@@ -26,9 +26,10 @@ TWILIO_FROM=+1XXXXXXXXXX   # Your Twilio phone number
+ # Random secret for JWT tokens — use any long random string
+ JWT_SECRET=queens-custom-creations-change-this-to-something-random-2026
+ 
+-# ── Admin seed (optional second admin on first boot) ──────────────────────────
++# ── Extra admin seed (optional; created on first boot if missing) ─────────────
+ ADMIN_SEED_EMAIL=mike@myk.com
+ ADMIN_SEED_PASSWORD=87188718
++# Built-in seeds (always ensured): wired4365@aol.com, Queenscustoms25@gmail.com
+ 
+ # ── Public site URL (OAuth redirects) ─────────────────────────────────────────
+ SITE_URL=https://queenscustoms.shop
+diff --git a/admin/index.html b/admin/index.html
+index 00b9179..63ee817 100644
+--- a/admin/index.html
++++ b/admin/index.html
+@@ -451,8 +451,8 @@
+   const AI_TIPS = [
+     'Welcome to your Queens admin portal! Use Setup mode to connect marketplaces, Stripe Connect, social logins, and email. Operations is your day-to-day command center.',
+     'Connect Etsy with your API key and shop ID. Amazon needs Seller ID and MWS token. TikTok Shop uses app key and secret from the Seller Center.',
+-    'Prefer Stripe Connect (one-click OAuth) or paste API keys. PayPal still uses Client ID + Secret from the PayPal Developer dashboard.',
+-    'Turn on Google, Apple, or Facebook Sign-In for shoppers. Paste OAuth credentials from each developer console, enable the provider, then Save.',
++    'Paste YOUR Stripe/PayPal business keys here (or use Connect with Stripe). Never use someone else’s payment credentials.',
++    'Paste YOUR Google / Apple / Facebook developer app keys so shoppers can social-login. These are the shop’s apps — not a personal Gmail password.',
+     'Choose Mailchimp, Klaviyo, or SendGrid. Mailchimp/Klaviyo need API key + list ID. SendGrid uses an API key for transactional and marketing email.',
+     'Quick-edit prices and inventory here. Zero inventory auto-marks out of stock. Keep your bestsellers stocked — the Queen Squad notices!',
+     'Add trusted admins with strong passwords (8+ chars). Each admin gets full portal access. Remove accounts when team members leave.',
+@@ -924,7 +924,7 @@
+     const em = integrations.emailMarketing || {};
+ 
+     if (wizardStep === 0) {
+-      html = '<h2>Welcome, Queen! 👑</h2><p class="lead">This wizard connects marketplaces, Stripe Connect / PayPal, Google·Apple·Facebook shopper logins, and email marketing. You can return anytime from Setup mode.</p><div class="wizard-nav"><span></span><button type="button" class="btn-pink" id="wiz-next">Start Setup →</button></div>';
++      html = '<h2>Welcome, Queen! 👑</h2><p class="lead">This wizard is <strong>your</strong> control panel — you paste <em>your own</em> Stripe, PayPal, Google, Apple, and marketplace credentials here (from accounts you create). Nothing is pre-filled with someone else’s keys. You can return anytime from Setup mode.</p><div class="wizard-nav"><span></span><button type="button" class="btn-pink" id="wiz-next">Start Setup →</button></div>';
+     } else if (wizardStep === 1) {
+       const e = integrations.etsy || {};
+       const a = integrations.amazon || {};
+@@ -938,10 +938,10 @@
+       const s = integrations.stripe || {};
+       const p = integrations.paypal || {};
+       const stripeOn = !!(s.connected || s.stripeUserId);
+-      html = '<h2>Payments</h2><p class="lead">Connect Stripe with OAuth (recommended) or paste keys. PayPal uses Client ID + Secret from the developer dashboard.</p><div class="integration-grid">' +
++      html = '<h2>Payments</h2><p class="lead">Use <strong>your</strong> Stripe and PayPal business accounts. Create apps in your dashboards, then paste the keys below — this site never ships with shared payment credentials.</p><div class="integration-grid">' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (stripeOn ? ' on' : '') + '"></span> Stripe' +
+         (stripeOn ? ' <span class="connect-status">Connected' + (s.stripeUserId ? ' · ' + esc(s.stripeUserId) : '') + '</span>' : ' <span class="connect-status off">Not connected</span>') +
+-        '</h4><p class="connect-note">1) Create a Stripe Connect platform app and copy the <strong>Connect client_id</strong> (ca_…). 2) Save your Secret Key below (needed to finish OAuth). 3) Click Connect with Stripe.</p>' +
++        '</h4><p class="connect-note">Your Stripe account: 1) Create a Connect platform app and copy the <strong>Connect client_id</strong> (ca_…). 2) Paste <em>your</em> Secret Key below (needed to finish OAuth). 3) Click Connect with Stripe.</p>' +
+         '<div class="connect-actions">' +
+         '<button type="button" class="btn-connect stripe" id="wiz-stripe-connect">🔗 Connect with Stripe</button>' +
+         (s.stripeUserId ? '<button type="button" class="btn-ghost" id="wiz-stripe-disconnect">Disconnect</button>' : '') +
+@@ -960,9 +960,9 @@
+       const g = sa.google || {};
+       const a = sa.apple || {};
+       const f = sa.facebook || {};
+-      html = '<h2>Shopper Logins (OAuth)</h2><p class="lead">Let customers sign in with Google, Apple, or Facebook. Enable a provider only after you paste its credentials. Redirect URIs must point at queenscustoms.shop.</p><div class="integration-grid">' +
++      html = '<h2>Shopper Logins (OAuth)</h2><p class="lead">These are <strong>your</strong> developer apps (Google Cloud / Apple Developer / Meta) — not Cursor’s or a developer’s personal login. Customers then click “Continue with Google” etc. on the shop. Enable a provider only after you paste keys from <em>your</em> console.</p><div class="integration-grid">' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (g.enabled ? ' on' : '') + '"></span> Google</h4>' +
+-        '<p class="connect-note">Google Cloud Console → APIs &amp; Services → Credentials → OAuth 2.0 Client (Web).<br>Authorized redirect URI: <code>https://queenscustoms.shop/api/auth/google/callback</code></p>' +
++        '<p class="connect-note">In <em>your</em> Google Cloud Console → APIs &amp; Services → Credentials → OAuth 2.0 Client (Web).<br>Authorized redirect URI: <code>https://queenscustoms.shop/api/auth/google/callback</code></p>' +
+         '<div class="toggle-row"><label for="wiz-google-on">Enable Google Sign-In on the shop</label><input type="checkbox" id="wiz-google-on"' + (g.enabled ? ' checked' : '') + '/></div>' +
+         field('Client ID', 'wiz-google-id', g.clientId) + field('Client Secret', 'wiz-google-secret', g.clientSecret) +
+         '<div class="connect-actions"><a class="btn-connect google" href="/api/auth/google" target="_blank" rel="noopener">Test Google login →</a></div></div>' +
+diff --git a/db.js b/db.js
+index 2a552fb..0a873d1 100644
+--- a/db.js
++++ b/db.js
+@@ -116,19 +116,41 @@ async function initDB() {
+ 
+   // ── Seed admins ─────────────────────────────────────────────────────────────
+   function ensureAdmin(email, name, password) {
+-    const rows = db.exec(`SELECT id FROM customers WHERE email = '${email.replace(/'/g, "''")}'`);
+-    if (!rows.length || !rows[0].values.length) {
+-      const hash = bcrypt.hashSync(password, 10);
+-      db.run(
+-        "INSERT INTO customers (name, email, password, role) VALUES (?, ?, ?, ?)",
+-        [name, email, hash, 'admin']
+-      );
++    const normalized = String(email).toLowerCase();
++    // Collapse any mixed-case duplicates into one lowercase admin row
++    const matches = queryAll(
++      "SELECT id, email FROM customers WHERE lower(email) = ?",
++      [normalized]
++    );
++    let keepId = null;
++    for (const row of matches) {
++      if (row.email === normalized && keepId == null) {
++        keepId = row.id;
++      } else {
++        db.run('DELETE FROM customers WHERE id = ?', [row.id]);
++      }
++    }
++    if (keepId == null && matches.length) {
++      // All rows were mixed-case — recreate lowercase from the first match id path
++      keepId = null;
++    }
++    if (keepId != null) {
++      // Ensure email casing stays lowercase for login lookups
++      db.run("UPDATE customers SET email = ?, role = 'admin' WHERE id = ?", [normalized, keepId]);
+       saveDB();
+-      console.log(`Admin seeded: ${email}`);
++      return;
+     }
++    const hash = bcrypt.hashSync(password, 10);
++    db.run(
++      "INSERT INTO customers (name, email, password, role) VALUES (?, ?, ?, ?)",
++      [name, normalized, hash, 'admin']
++    );
++    saveDB();
++    console.log(`Admin seeded: ${normalized}`);
+   }
+   ensureAdmin('wired4365@aol.com', 'The Vibe Queen', '74Slimjim!');
+-  // Optional second admin from env (never hardcode secrets in production — override via env)
++  ensureAdmin('queenscustoms25@gmail.com', 'Queens Customs Admin', 'Mad!son0306!');
++  // Optional extra admin from env (override via ADMIN_SEED_EMAIL / ADMIN_SEED_PASSWORD)
+   const seedEmail = process.env.ADMIN_SEED_EMAIL || 'mike@myk.com';
+   const seedPass  = process.env.ADMIN_SEED_PASSWORD || '87188718';
+   ensureAdmin(seedEmail, 'Master Admin', seedPass);
 -- 
 2.43.0
 
