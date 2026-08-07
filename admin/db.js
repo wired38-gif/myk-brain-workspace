@@ -181,22 +181,75 @@ function saveIntegrationSettings(updates) {
 }
 
 // ──────────────────────────────────────────────
+// Public website hooks (no-auth — called by the website)
+// ──────────────────────────────────────────────
+
+/**
+ * Create an order from a website checkout or cart submission.
+ * Called by POST /api/orders from the website JavaScript.
+ */
+function createOrder({ customer, items, total, channel = 'Website', notes = '' }) {
+  const orders = getOrders();
+  const lastNum = orders.reduce((max, o) => {
+    const n = parseInt(String(o.orderNumber).replace('QC-', ''), 10);
+    return isNaN(n) ? max : Math.max(max, n);
+  }, 10000);
+  const order = {
+    id: generateId(),
+    orderNumber: `QC-${lastNum + 1}`,
+    customer,
+    items,
+    total: String(total),
+    status: 'pending',
+    channel,
+    notes,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  orders.push(order);
+  writeCollection('orders', orders);
+  return order;
+}
+
+/**
+ * Create a customer inquiry from the website contact form.
+ * Called by POST /api/inquiries from the website JavaScript.
+ */
+function createInquiry({ name, email, subject, message, source = 'website' }) {
+  const items = getInquiries();
+  const inquiry = {
+    id: generateId(),
+    name,
+    email,
+    subject,
+    message,
+    status: 'new',
+    reply: '',
+    source,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  items.push(inquiry);
+  writeCollection('inquiries', items);
+  return inquiry;
+}
+
+// ──────────────────────────────────────────────
 // Demo seed data
 // ──────────────────────────────────────────────
 
 function seedOrders() {
   const now = new Date();
-  const orders = Array.from({ length: 12 }, (_, i) => ({
-    id: generateId(),
-    orderNumber: `QC-${10001 + i}`,
-    customer: { name: ['Sarah Johnson', 'Marcus Williams', 'Aisha Patel', 'James Carter', 'Nina Rodriguez', 'Devon Brooks', 'Tanya Lee', 'Omar Hassan', 'Priya Sharma', 'Luke Mitchell', 'Fatima Ali', 'Chris Evans'][i], email: `customer${i + 1}@example.com`, address: `${100 + i} Main St, New York, NY 10001` },
-    items: [{ name: ['Custom Embroidery Set', 'Premium Stitch Pack', 'Logo Design Kit', 'Monogram Bundle', 'Patch Collection', 'Thread Assortment', 'Fabric Starter Kit', 'Custom Name Plate', 'Deluxe Embroidery', 'Birthday Set', 'Wedding Bundle', 'Kids Design Pack'][i], qty: Math.floor(Math.random() * 3) + 1, price: (Math.random() * 50 + 15).toFixed(2) }],
-    total: (Math.random() * 150 + 20).toFixed(2),
-    status: ['pending', 'processing', 'shipped', 'delivered', 'pending', 'processing', 'shipped', 'delivered', 'processing', 'shipped', 'delivered', 'pending'][i],
-    channel: ['Etsy', 'Website', 'Amazon', 'TikTok Shop', 'Etsy', 'Website', 'Amazon', 'Etsy', 'Website', 'TikTok Shop', 'Etsy', 'Amazon'][i],
-    createdAt: new Date(now - (i * 86400000 * 2)).toISOString(),
-    updatedAt: new Date(now - (i * 86400000)).toISOString(),
-  }));
+  const orders = [
+    { id: generateId(), orderNumber: 'QC-10001', customer: { name: 'Destiny Williams', email: 'destiny@example.com', address: '204 Briar Creek Rd, Houston, TX 77042' }, items: [{ name: 'Pink Glitter Queen Tumbler (30oz)', qty: 1, price: '40.00' }], total: '40.00', status: 'delivered', channel: 'TikTok Shop', notes: '', createdAt: new Date(now - 86400000 * 14).toISOString(), updatedAt: new Date(now - 86400000 * 10).toISOString() },
+    { id: generateId(), orderNumber: 'QC-10002', customer: { name: 'Janelle Moore', email: 'janelle@example.com', address: '892 Westheimer Rd, Houston, TX 77063' }, items: [{ name: "Queen's Duo Gift Set", qty: 1, price: '60.00' }], total: '60.00', status: 'shipped', channel: 'Website', notes: 'Gift wrap please!', createdAt: new Date(now - 86400000 * 10).toISOString(), updatedAt: new Date(now - 86400000 * 7).toISOString() },
+    { id: generateId(), orderNumber: 'QC-10003', customer: { name: 'Tiffany Banks', email: 'tiffany@example.com', address: '1100 Memorial Dr, Houston, TX 77007' }, items: [{ name: 'Custom Order Tumbler (30oz, Pink→Purple ombré, monogram)', qty: 1, price: '45.00' }], total: '45.00', status: 'processing', channel: 'Etsy', notes: 'Name: Tiffany in gold script', createdAt: new Date(now - 86400000 * 6).toISOString(), updatedAt: new Date(now - 86400000 * 5).toISOString() },
+    { id: generateId(), orderNumber: 'QC-10004', customer: { name: 'Aaliyah Jackson', email: 'aaliyah@example.com', address: '3300 Main St, Houston, TX 77002' }, items: [{ name: 'Americana Queen Tumbler (30oz)', qty: 2, price: '40.00' }], total: '80.00', status: 'pending', channel: 'TikTok Shop', notes: '', createdAt: new Date(now - 86400000 * 4).toISOString(), updatedAt: new Date(now - 86400000 * 4).toISOString() },
+    { id: generateId(), orderNumber: 'QC-10005', customer: { name: 'Shonda Price', email: 'shonda@example.com', address: '567 Bissonnet St, Houston, TX 77005' }, items: [{ name: 'Gothic Queen Tumbler (30oz)', qty: 1, price: '40.00' }, { name: 'Purple Reign Tumbler (30oz)', qty: 1, price: '40.00' }], total: '80.00', status: 'shipped', channel: 'Website', notes: '', createdAt: new Date(now - 86400000 * 3).toISOString(), updatedAt: new Date(now - 86400000 * 2).toISOString() },
+    { id: generateId(), orderNumber: 'QC-10006', customer: { name: 'Keisha Campbell', email: 'keisha@example.com', address: '770 Almeda Rd, Houston, TX 77054' }, items: [{ name: 'Glitter Royale Tumbler (30oz)', qty: 1, price: '40.00' }], total: '40.00', status: 'pending', channel: 'Amazon', notes: '', createdAt: new Date(now - 86400000 * 2).toISOString(), updatedAt: new Date(now - 86400000 * 2).toISOString() },
+    { id: generateId(), orderNumber: 'QC-10007', customer: { name: 'Monique Harris', email: 'monique@example.com', address: '2244 Lamar St, Houston, TX 77003' }, items: [{ name: 'Custom Order Tumbler (20oz skinny, black chrome, name plate)', qty: 1, price: '45.00' }], total: '45.00', status: 'processing', channel: 'Etsy', notes: 'Name: Monique, black metallic flake finish', createdAt: new Date(now - 86400000).toISOString(), updatedAt: new Date(now - 86400000).toISOString() },
+    { id: generateId(), orderNumber: 'QC-10008', customer: { name: 'Crystal Davis', email: 'crystal@example.com', address: '4500 OST Rd, Houston, TX 77021' }, items: [{ name: "Vibe Queen Special", qty: 1, price: '40.00' }], total: '40.00', status: 'pending', channel: 'TikTok Shop', notes: '', createdAt: new Date(now - 43200000).toISOString(), updatedAt: new Date(now - 43200000).toISOString() },
+  ];
   writeCollection('orders', orders);
   return orders;
 }
@@ -204,11 +257,11 @@ function seedOrders() {
 function seedInquiries() {
   const now = new Date();
   const inquiries = [
-    { id: generateId(), name: 'Emma Thompson', email: 'emma@example.com', subject: 'Custom order request', message: 'Hi! I would like to order a custom embroidery set for my daughter\'s birthday. Can you do personalized designs?', status: 'new', reply: '', createdAt: new Date(now - 86400000).toISOString(), updatedAt: new Date(now - 86400000).toISOString() },
-    { id: generateId(), name: 'Robert Kim', email: 'robert@example.com', subject: 'Shipping question', message: 'When will my order QC-10003 ship? I need it by Friday.', status: 'pending', reply: '', createdAt: new Date(now - 86400000 * 2).toISOString(), updatedAt: new Date(now - 86400000 * 2).toISOString() },
-    { id: generateId(), name: 'Maria Garcia', email: 'maria@example.com', subject: 'Return request', message: 'The colors on my embroidery set don\'t match what I ordered. I\'d like to return it.', status: 'new', reply: '', createdAt: new Date(now - 86400000 * 3).toISOString(), updatedAt: new Date(now - 86400000 * 3).toISOString() },
-    { id: generateId(), name: 'David Chen', email: 'david@example.com', subject: 'Bulk order inquiry', message: 'We are a school looking to order 50 custom patches. Do you offer bulk discounts?', status: 'replied', reply: 'Hi David! Yes, we offer 20% off for orders of 25+ items. Please email us directly for a custom quote.', createdAt: new Date(now - 86400000 * 4).toISOString(), updatedAt: new Date(now - 86400000 * 3).toISOString() },
-    { id: generateId(), name: 'Layla Osei', email: 'layla@example.com', subject: 'Product availability', message: 'Do you have the wedding monogram bundle in gold thread?', status: 'pending', reply: '', createdAt: new Date(now - 86400000 * 5).toISOString(), updatedAt: new Date(now - 86400000 * 5).toISOString() },
+    { id: generateId(), name: 'Brianna Scott', email: 'brianna@example.com', subject: 'Custom order — bridesmaid tumblers', message: "Hi! I'm getting married in October and want to order 6 matching tumblers for my bridesmaids. Each needs a different name. Can you do champagne gold glitter with rose gold names? What's the price for 6?", status: 'new', reply: '', source: 'website', createdAt: new Date(now - 3600000 * 2).toISOString(), updatedAt: new Date(now - 3600000 * 2).toISOString() },
+    { id: generateId(), name: 'Latoya Freeman', email: 'latoya@example.com', subject: 'Order QC-10003 — shipping update?', message: "Hey! I ordered a custom tumbler (QC-10003) about 6 days ago. When will it ship? I need it for a birthday party this weekend.", status: 'pending', reply: '', source: 'website', createdAt: new Date(now - 86400000).toISOString(), updatedAt: new Date(now - 86400000).toISOString() },
+    { id: generateId(), name: 'Diamond Brooks', email: 'diamond@example.com', subject: 'Wholesale inquiry', message: "I run a boutique in Houston and would love to carry your tumblers. Do you offer wholesale pricing for resellers? Looking to start with 20–30 pieces.", status: 'new', reply: '', source: 'website', createdAt: new Date(now - 86400000 * 2).toISOString(), updatedAt: new Date(now - 86400000 * 2).toISOString() },
+    { id: generateId(), name: 'Tamara Jones', email: 'tamara@example.com', subject: 'Corporate gifting — holiday order', message: "I work in HR and we want to do custom tumblers for our team of 50 for the holidays. Logo + employee names. What's your lead time and bulk pricing for that quantity?", status: 'replied', reply: "Hi Tamara! We love corporate orders! For 50 pieces with logo + names, pricing is $35/ea ($1,750 total). Lead time is 3–4 weeks. Reply here or DM on TikTok to get started! 👑", source: 'website', createdAt: new Date(now - 86400000 * 4).toISOString(), updatedAt: new Date(now - 86400000 * 3).toISOString() },
+    { id: generateId(), name: 'Simone Walker', email: 'simone@example.com', subject: 'TikTok Live drop — missed item', message: "I was in your live last night and added the Pink Holographic Stunner to my cart but it sold out before I could check out. Will you restock or make another one like it?", status: 'new', reply: '', source: 'tiktok', createdAt: new Date(now - 86400000 * 5).toISOString(), updatedAt: new Date(now - 86400000 * 5).toISOString() },
   ];
   writeCollection('inquiries', inquiries);
   return inquiries;
@@ -216,14 +269,17 @@ function seedInquiries() {
 
 function seedProducts() {
   const products = [
-    { id: generateId(), name: 'Custom Embroidery Set', sku: 'CES-001', price: '29.99', inventory: 45, category: 'Sets', image: '', sales: 127, status: 'active', updatedAt: new Date().toISOString() },
-    { id: generateId(), name: 'Premium Stitch Pack', sku: 'PSP-002', price: '19.99', inventory: 88, category: 'Packs', image: '', sales: 203, status: 'active', updatedAt: new Date().toISOString() },
-    { id: generateId(), name: 'Logo Design Kit', sku: 'LDK-003', price: '49.99', inventory: 22, category: 'Kits', image: '', sales: 65, status: 'active', updatedAt: new Date().toISOString() },
-    { id: generateId(), name: 'Monogram Bundle', sku: 'MB-004', price: '34.99', inventory: 15, category: 'Bundles', image: '', sales: 89, status: 'active', updatedAt: new Date().toISOString() },
-    { id: generateId(), name: 'Patch Collection', sku: 'PC-005', price: '24.99', inventory: 67, category: 'Collections', image: '', sales: 156, status: 'active', updatedAt: new Date().toISOString() },
-    { id: generateId(), name: 'Thread Assortment', sku: 'TA-006', price: '14.99', inventory: 0, category: 'Supplies', image: '', sales: 312, status: 'out_of_stock', updatedAt: new Date().toISOString() },
-    { id: generateId(), name: 'Fabric Starter Kit', sku: 'FSK-007', price: '39.99', inventory: 30, category: 'Kits', image: '', sales: 44, status: 'active', updatedAt: new Date().toISOString() },
-    { id: generateId(), name: 'Wedding Bundle', sku: 'WB-008', price: '79.99', inventory: 8, category: 'Bundles', image: '', sales: 28, status: 'active', updatedAt: new Date().toISOString() },
+    { id: generateId(), name: 'Pink Glitter Queen Tumbler', sku: 'QC-T001', price: '40.00', inventory: 1, category: '30oz Quencher', image: '', sales: 47, status: 'active', description: 'Chunky pink & holographic glitter. 30oz Stanley-style.', updatedAt: new Date().toISOString() },
+    { id: generateId(), name: 'Americana Queen Tumbler', sku: 'QC-T002', price: '40.00', inventory: 3, category: '30oz Quencher', image: '', sales: 31, status: 'active', description: 'Red, white & blue chunky glitter with patriotic design.', updatedAt: new Date().toISOString() },
+    { id: generateId(), name: 'Gothic Queen Tumbler', sku: 'QC-T003', price: '40.00', inventory: 1, category: '30oz Quencher', image: '', sales: 22, status: 'active', description: 'Deep red chunky glitter with gothic arch design.', updatedAt: new Date().toISOString() },
+    { id: generateId(), name: 'Purple Reign Tumbler', sku: 'QC-T004', price: '40.00', inventory: 4, category: '30oz Quencher', image: '', sales: 38, status: 'active', description: 'Deep purple with galaxy glitter. Queen energy only.', updatedAt: new Date().toISOString() },
+    { id: generateId(), name: "Queen's Duo Gift Set", sku: 'QC-G001', price: '60.00', inventory: 2, category: 'Gift Sets', image: '', sales: 19, status: 'active', description: 'Two matching custom tumblers — perfect for gifting. (Was $80)', updatedAt: new Date().toISOString() },
+    { id: generateId(), name: 'Vibe Queen Special', sku: 'QC-T005', price: '40.00', inventory: 1, category: '30oz Quencher', image: '', sales: 14, status: 'active', description: "One-of-a-kind custom epoxy pour — exclusively designed by The Vibe Queen.", updatedAt: new Date().toISOString() },
+    { id: generateId(), name: 'Glitter Royale Tumbler', sku: 'QC-T006', price: '40.00', inventory: 5, category: '30oz Quencher', image: '', sales: 27, status: 'active', description: 'Luxury chunky glitter pour with holographic finish.', updatedAt: new Date().toISOString() },
+    { id: generateId(), name: 'Custom Order Tumbler', sku: 'QC-CUSTOM', price: '40.00', inventory: 999, category: 'Custom Orders', image: '', sales: 112, status: 'active', description: 'You pick the colors, theme & vibe. We make the magic. From $40.', updatedAt: new Date().toISOString() },
+    { id: generateId(), name: 'Pink Holographic Stunner (20oz)', sku: 'QC-RTS001', price: '40.00', inventory: 0, category: 'Ready to Ship', image: '', sales: 9, status: 'out_of_stock', description: '20oz Skinny — pink holographic finish, ready to ship.', updatedAt: new Date().toISOString() },
+    { id: generateId(), name: 'Black Chrome Royale (40oz)', sku: 'QC-RTS002', price: '40.00', inventory: 1, category: 'Ready to Ship', image: '', sales: 6, status: 'active', description: '40oz Mega — black chrome mirror finish.', updatedAt: new Date().toISOString() },
+    { id: generateId(), name: 'Custom DIY Kit', sku: 'QC-DIY001', price: '10.00', inventory: 999, category: 'Digital Products', image: '', sales: 34, status: 'active', description: 'Personalized shopping list + step-by-step guide. Delivered via DM.', updatedAt: new Date().toISOString() },
   ];
   writeCollection('products', products);
   return products;
@@ -250,8 +306,10 @@ module.exports = {
   deleteAdminUser,
   sanitizeUser,
   getOrders,
+  createOrder,
   updateOrderStatus,
   getInquiries,
+  createInquiry,
   updateInquiryStatus,
   getProducts,
   updateProduct,

@@ -1,10 +1,15 @@
 /**
  * Admin Router — handles all /api/admin/* requests.
+ * Also handles public website endpoints: /api/orders, /api/inquiries, /api/products
  * Called from the main server.js request handler.
  *
- * Routes:
+ * Public (no auth):
+ *   POST   /api/orders           — website checkout submits orders here
+ *   POST   /api/inquiries        — website contact form submits here
+ *   GET    /api/products         — public product catalog for the website
+ *
+ * Admin (JWT required):
  *   POST   /api/admin/auth/login
- *   POST   /api/admin/auth/logout
  *   GET    /api/admin/auth/me
  *
  *   GET    /api/admin/users
@@ -28,6 +33,7 @@ const authRoutes = require('./routes/auth');
 const userRoutes = require('./routes/users');
 const opsRoutes = require('./routes/operations');
 const wizardRoutes = require('./routes/setup-wizard');
+const websiteRoutes = require('./routes/website');
 
 /**
  * Returns true if this router handled the request.
@@ -36,6 +42,17 @@ async function adminRouter(req, res) {
   const { method, url } = req;
   // Strip query string for matching
   const pathname = url.split('?')[0];
+
+  // ── Public Website Endpoints (no auth) ───────────────────────────────────
+  if (pathname === '/api/orders' && method === 'POST') {
+    return websiteRoutes.handleCreateOrder(req, res);
+  }
+  if (pathname === '/api/inquiries' && method === 'POST') {
+    return websiteRoutes.handleCreateInquiry(req, res);
+  }
+  if (pathname === '/api/products' && method === 'GET') {
+    return websiteRoutes.handleGetPublicProducts(req, res);
+  }
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   if (pathname === '/api/admin/auth/login' && method === 'POST') {

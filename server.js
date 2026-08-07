@@ -159,12 +159,12 @@ const server = http.createServer(async (req, res) => {
         return;
     }
 
-    // ── Admin API Routes (/api/admin/*) ────────────────────────────────────────
-    if (req.url.startsWith('/api/admin/')) {
+    // ── Admin API Routes (/api/admin/*) and public website API (/api/orders, /api/inquiries, /api/products)
+    if (req.url.startsWith('/api/admin/') || req.url.startsWith('/api/orders') || req.url.startsWith('/api/inquiries') || req.url.startsWith('/api/products')) {
         const handled = await adminRouter(req, res);
         if (handled !== false) return;
         res.writeHead(404, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Admin route not found' }));
+        res.end(JSON.stringify({ error: 'Route not found' }));
         return;
     }
 
@@ -186,6 +186,18 @@ const server = http.createServer(async (req, res) => {
                 res.end('Admin page not found');
             } else {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+                res.end(content);
+            }
+        });
+        return;
+    }
+
+    // ── Public integration script for queenscustoms.shop ────────────────────────
+    if (req.url.split('?')[0] === '/qc-integration.js') {
+        fs.readFile(path.join(__dirname, 'public', 'qc-integration.js'), (err, content) => {
+            if (err) { res.writeHead(404); res.end(); }
+            else {
+                res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
                 res.end(content);
             }
         });
