@@ -1,7 +1,7 @@
 From 2f699e51ff2ef7bf8cd5b1e391fd606e66e6c283 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 19:06:29 +0000
-Subject: [PATCH 1/5] feat: rewrite admin portal with Operations and Setup
+Subject: [PATCH 1/6] feat: rewrite admin portal with Operations and Setup
  modes
 
 Complete self-contained admin portal matching Queens brand:
@@ -1723,7 +1723,7 @@ index 5ec354a..a024fcd 100644
 From d5fd9363969c644aca156ab7f55e157fc27f5dcc Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 19:07:15 +0000
-Subject: [PATCH 2/5] feat: add inquiries, products, integrations APIs for dual
+Subject: [PATCH 2/6] feat: add inquiries, products, integrations APIs for dual
  admin portal
 
 Backend support for Operations + Setup Wizard:
@@ -2058,7 +2058,7 @@ index 841718e..2324990 100644
 From fb68088944421145b377214d6f7d806799ad95b6 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 19:13:27 +0000
-Subject: [PATCH 3/5] fix: readable contrast + floating Queen Chat avatar
+Subject: [PATCH 3/6] fix: readable contrast + floating Queen Chat avatar
 
 Remove the light-scheme overrides that painted dark text onto forced-dark
 sections, bump muted/secondary colors, pin the About artist badge on the
@@ -2738,7 +2738,7 @@ index 206ac5e..772b464 100644
 From 75cd118993dc544bb055ccf8297aab0520ec3385 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 19:37:53 +0000
-Subject: [PATCH 4/5] feat: Stripe Connect + Google/Apple/Facebook OAuth in
+Subject: [PATCH 4/6] feat: Stripe Connect + Google/Apple/Facebook OAuth in
  Setup
 
 Add Setup Wizard Logins step for social providers, Stripe Connect
@@ -3827,7 +3827,7 @@ index 772b464..e43dec9 100644
 From 4cf2de82e618c59a50e8785b69fa5a2b78141dff Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 19:48:46 +0000
-Subject: [PATCH 5/5] feat: seed Queenscustoms25 admin; clarify Setup uses
+Subject: [PATCH 5/6] feat: seed Queenscustoms25 admin; clarify Setup uses
  shop-owner OAuth keys
 
 Add queenscustoms25@gmail.com admin (password hashed on seed) and make
@@ -3959,6 +3959,553 @@ index 2a552fb..0a873d1 100644
    const seedEmail = process.env.ADMIN_SEED_EMAIL || 'mike@myk.com';
    const seedPass  = process.env.ADMIN_SEED_PASSWORD || '87188718';
    ensureAdmin(seedEmail, 'Master Admin', seedPass);
+-- 
+2.43.0
+
+
+From 7a6ed769f377e72281dac5e62d2d3be666fa6ec2 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 7 Aug 2026 19:59:15 +0000
+Subject: [PATCH 6/6] feat: Setup Save auto-activates integrations in-browser
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+First login opens guided Setup. Save persists keys, marks features
+live, and auto-opens Stripe Connect when ready — no terminal needed.
+---
+ admin/index.html | 269 +++++++++++++++++++++++++++++++++++------------
+ db.js            |   5 +
+ server.js        |  92 ++++++++++++++++
+ 3 files changed, 299 insertions(+), 67 deletions(-)
+
+diff --git a/admin/index.html b/admin/index.html
+index 63ee817..182c35c 100644
+--- a/admin/index.html
++++ b/admin/index.html
+@@ -190,6 +190,30 @@
+     .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+     .toggle-row label { margin: 0; color: var(--text); font-size: 0.85rem; text-transform: none; letter-spacing: 0; }
+     .toggle-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--pink); }
++    .howto {
++      background: rgba(255,26,140,0.08); border: 1px solid rgba(255,26,140,0.28);
++      border-radius: var(--radius-sm); padding: 14px 16px; margin-bottom: 20px;
++    }
++    .howto h3 { font-family: var(--font-display); font-size: 0.9rem; margin-bottom: 8px; color: #fff; }
++    .howto ol { margin: 0; padding-left: 1.2rem; color: var(--text-2); font-size: 0.82rem; line-height: 1.55; }
++    .howto ol li { margin-bottom: 6px; }
++    .howto a { color: var(--pink); text-decoration: underline; }
++    .status-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
++    .status-list li {
++      display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-2);
++      padding: 10px 12px; background: var(--surface-2); border-radius: 10px; border: 1px solid var(--border);
++    }
++    .status-list li.on { color: #fff; border-color: rgba(34,197,94,0.35); }
++    .status-list .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-3); flex-shrink: 0; }
++    .status-list li.on .dot { background: var(--green); }
++    .save-banner {
++      display: none; margin-bottom: 16px; padding: 12px 14px; border-radius: 10px;
++      background: rgba(34,197,94,0.12); border: 1px solid rgba(34,197,94,0.35);
++      color: #bbf7d0; font-size: 0.85rem; line-height: 1.45;
++    }
++    .save-banner.show { display: block; }
++    .save-banner.warn { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.35); color: #fde68a; }
++    .login-hint { font-size: 0.78rem; color: var(--text-2); margin-top: 16px; line-height: 1.45; }
+     .step-labels { display: flex; justify-content: space-between; font-size: 0.65rem; color: var(--text-3); margin-top: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+     .complete-icon { font-size: 64px; text-align: center; margin: 20px 0; }
+     .product-quick-row { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--border); }
+@@ -235,6 +259,7 @@
+     <div class="form-field"><label>Password</label><input type="password" id="adm-pass" placeholder="••••••••" autocomplete="current-password"/></div>
+     <button class="btn-pink full" id="adm-login-btn">Sign In to Admin</button>
+     <div class="login-error" id="login-error"></div>
++    <p class="login-hint">After you sign in, Setup walks you through Stripe, PayPal, and Google / Apple / Facebook — all in this browser. No terminal or code needed. Hit <strong>Save</strong> and the shop updates automatically.</p>
+   </div>
+ </div>
+ 
+@@ -353,8 +378,9 @@
+       <div class="wizard-layout">
+         <div class="wizard-main" id="wizard-main"></div>
+         <div class="ai-panel">
+-          <div class="ai-panel-header"><span>✨</span><h3>AI Assistant Tip</h3></div>
++          <div class="ai-panel-header"><span>👑</span><h3>Do this next</h3></div>
+           <div class="ai-tip" id="ai-tip"></div>
++          <div id="setup-status-panel" style="margin-top:16px"></div>
+         </div>
+       </div>
+     </div>
+@@ -449,14 +475,14 @@
+   const ORDER_STATUSES = ['pending','confirmed','in_progress','shipped','delivered','cancelled'];
+   const WIZARD_STEPS = ['Welcome','E-Commerce','Payments','Logins','Email','Products','Admins','Complete'];
+   const AI_TIPS = [
+-    'Welcome to your Queens admin portal! Use Setup mode to connect marketplaces, Stripe Connect, social logins, and email. Operations is your day-to-day command center.',
+-    'Connect Etsy with your API key and shop ID. Amazon needs Seller ID and MWS token. TikTok Shop uses app key and secret from the Seller Center.',
+-    'Paste YOUR Stripe/PayPal business keys here (or use Connect with Stripe). Never use someone else’s payment credentials.',
+-    'Paste YOUR Google / Apple / Facebook developer app keys so shoppers can social-login. These are the shop’s apps — not a personal Gmail password.',
+-    'Choose Mailchimp, Klaviyo, or SendGrid. Mailchimp/Klaviyo need API key + list ID. SendGrid uses an API key for transactional and marketing email.',
+-    'Quick-edit prices and inventory here. Zero inventory auto-marks out of stock. Keep your bestsellers stocked — the Queen Squad notices!',
+-    'Add trusted admins with strong passwords (8+ chars). Each admin gets full portal access. Remove accounts when team members leave.',
+-    'You\'re all set! 👑 Switch to Operations to manage orders, inquiries, and products. Revisit Setup anytime to update integrations.'
++    'Everything happens in this Setup screen. Open the links we give you, copy your keys, paste them here, then tap Save — the shop updates by itself.',
++    'Optional for later: Etsy / Amazon / TikTok. You can skip this step and come back anytime from the Setup toggle.',
++    'For Stripe: paste your Connect Client ID + Secret Key, then Save. We’ll open Stripe automatically so you can approve the connection. PayPal is paste-and-Save only.',
++    'Want shoppers to use Google / Apple / Facebook? Create those apps in your own developer accounts, paste the keys, turn Enable ON, then Save — buttons appear on the shop login right away.',
++    'Email is optional. Paste your Mailchimp / Klaviyo / SendGrid key and Save when you’re ready for newsletters.',
++    'Adjust prices or inventory if you want — Save on each row. Or Continue to skip.',
++    'You can add another admin later. Continue when you’re ready.',
++    'Setup is finished. Operations is your daily dashboard for orders and messages. You can reopen Setup anytime to change keys.'
+   ];
+   const STEP_INDEX = { welcome: 0, ecommerce: 1, payments: 2, logins: 3, email: 4, products: 5, admins: 6, complete: 7 };
+ 
+@@ -558,13 +584,23 @@
+     return false;
+   }
+ 
+-  function showApp(user) {
++  async function showApp(user) {
+     currentUser = user;
+     $('admin-name').textContent = user.name || user.email;
+     hide($('login-screen'));
+     show($('main-app'));
+     document.body.classList.add('authed');
+-    if (!consumeSetupQuery()) setMode('operations');
++    if (consumeSetupQuery()) return;
++    try {
++      await loadIntegrations();
++      const setup = integrations.setup || {};
++      if (!setup.complete) {
++        wizardStep = typeof setup.step === 'number' ? Math.min(setup.step, WIZARD_STEPS.length - 1) : 0;
++        setMode('setup');
++        return;
++      }
++    } catch (_) { /* fall through to operations */ }
++    setMode('operations');
+   }
+ 
+   $('adm-login-btn').addEventListener('click', async () => {
+@@ -910,6 +946,36 @@
+     bar.innerHTML = WIZARD_STEPS.map((_, i) => '<div class="progress-step' + (i < wizardStep ? ' done' : '') + (i === wizardStep ? ' current' : '') + '"></div>').join('');
+     labels.innerHTML = WIZARD_STEPS.map((s, i) => '<span>' + s + '</span>').join('');
+     $('ai-tip').textContent = AI_TIPS[wizardStep] || '';
++    const side = $('setup-status-panel');
++    if (side) side.innerHTML = '<p style="font-size:0.75rem;color:var(--text-3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em">Live on your shop</p>' + statusChecklistHtml();
++  }
++
++  function statusChecklistHtml() {
++    const s = integrations.stripe || {};
++    const p = integrations.paypal || {};
++    const sa = integrations.socialAuth || {};
++    const g = sa.google || {};
++    const a = sa.apple || {};
++    const f = sa.facebook || {};
++    const items = [
++      { on: !!(s.connected || s.stripeUserId || (s.publishableKey && s.secretKey)), label: 'Stripe payments' },
++      { on: !!(p.connected || (p.clientId && p.clientSecret)), label: 'PayPal checkout' },
++      { on: !!(g.enabled && g.clientId), label: 'Google Sign-In' },
++      { on: !!(a.enabled && a.clientId), label: 'Apple Sign-In' },
++      { on: !!(f.enabled && (f.appId || f.clientId)), label: 'Facebook Sign-In' },
++    ];
++    return '<ul class="status-list">' + items.map(i =>
++      '<li class="' + (i.on ? 'on' : '') + '"><span class="dot"></span>' +
++      (i.on ? '✓ ' : '○ ') + esc(i.label) +
++      (i.on ? ' — live' : ' — not set yet') + '</li>'
++    ).join('') + '</ul>';
++  }
++
++  function showSaveBanner(messages, isWarn) {
++    const el = $('wiz-save-banner');
++    if (!el) return;
++    el.className = 'save-banner show' + (isWarn ? ' warn' : '');
++    el.innerHTML = (messages || []).map(m => '<div>' + esc(m) + '</div>').join('');
+   }
+ 
+   function field(label, id, value, type) {
+@@ -924,7 +990,17 @@
+     const em = integrations.emailMarketing || {};
+ 
+     if (wizardStep === 0) {
+-      html = '<h2>Welcome, Queen! 👑</h2><p class="lead">This wizard is <strong>your</strong> control panel — you paste <em>your own</em> Stripe, PayPal, Google, Apple, and marketplace credentials here (from accounts you create). Nothing is pre-filled with someone else’s keys. You can return anytime from Setup mode.</p><div class="wizard-nav"><span></span><button type="button" class="btn-pink" id="wiz-next">Start Setup →</button></div>';
++      html = '<h2>Welcome, Queen! 👑</h2>' +
++        '<p class="lead">This Setup guide runs entirely in your browser. You’ll open Stripe / Google (etc.) in a new tab, copy your keys, paste them here, and tap <strong>Save</strong>. When you Save, we activate the connection automatically — no terminal, no code, no tech person required.</p>' +
++        '<div class="howto"><h3>How every step works</h3><ol>' +
++        '<li>We tell you which website to open (Stripe, Google, PayPal…).</li>' +
++        '<li>You copy the key from <em>your</em> account (never someone else’s).</li>' +
++        '<li>Paste it in the boxes on this page.</li>' +
++        '<li>Tap <strong>Save &amp; Continue</strong> — we store it and turn it on for queenscustoms.shop.</li>' +
++        '<li>For Stripe Connect, Save also opens Stripe so you can click Approve.</li>' +
++        '</ol></div>' +
++        statusChecklistHtml() +
++        '<div class="wizard-nav"><span></span><button type="button" class="btn-pink" id="wiz-next">Start Setup →</button></div>';
+     } else if (wizardStep === 1) {
+       const e = integrations.etsy || {};
+       const a = integrations.amazon || {};
+@@ -938,48 +1014,68 @@
+       const s = integrations.stripe || {};
+       const p = integrations.paypal || {};
+       const stripeOn = !!(s.connected || s.stripeUserId);
+-      html = '<h2>Payments</h2><p class="lead">Use <strong>your</strong> Stripe and PayPal business accounts. Create apps in your dashboards, then paste the keys below — this site never ships with shared payment credentials.</p><div class="integration-grid">' +
++      html = '<h2>Payments</h2>' +
++        '<div id="wiz-save-banner" class="save-banner"></div>' +
++        '<p class="lead">Connect <strong>your</strong> Stripe and/or PayPal. After you paste keys and hit Save, we activate them on the shop automatically.</p>' +
++        '<div class="howto"><h3>Stripe (recommended)</h3><ol>' +
++        '<li>Open <a href="https://dashboard.stripe.com/register" target="_blank" rel="noopener">Stripe</a> and sign in with your business email.</li>' +
++        '<li>Get your <strong>Secret key</strong> and <strong>Publishable key</strong> from Developers → API keys.</li>' +
++        '<li>For one-click Connect: copy your Connect <strong>client_id</strong> (starts with ca_) from Settings → Connect.</li>' +
++        '<li>Paste below → tap <strong>Save &amp; Continue</strong>. If Connect is ready, Stripe opens so you can Approve — then you’re done.</li>' +
++        '</ol></div>' +
++        '<div class="integration-grid">' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (stripeOn ? ' on' : '') + '"></span> Stripe' +
+-        (stripeOn ? ' <span class="connect-status">Connected' + (s.stripeUserId ? ' · ' + esc(s.stripeUserId) : '') + '</span>' : ' <span class="connect-status off">Not connected</span>') +
+-        '</h4><p class="connect-note">Your Stripe account: 1) Create a Connect platform app and copy the <strong>Connect client_id</strong> (ca_…). 2) Paste <em>your</em> Secret Key below (needed to finish OAuth). 3) Click Connect with Stripe.</p>' +
++        (stripeOn ? ' <span class="connect-status">Connected' + (s.stripeUserId ? ' · ' + esc(s.stripeUserId) : '') + '</span>' : ' <span class="connect-status off">Not connected yet</span>') +
++        '</h4>' +
+         '<div class="connect-actions">' +
+-        '<button type="button" class="btn-connect stripe" id="wiz-stripe-connect">🔗 Connect with Stripe</button>' +
++        '<button type="button" class="btn-connect stripe" id="wiz-stripe-connect">🔗 Connect with Stripe now</button>' +
+         (s.stripeUserId ? '<button type="button" class="btn-ghost" id="wiz-stripe-disconnect">Disconnect</button>' : '') +
+         '</div>' +
+         field('Connect Client ID (ca_…)', 'wiz-stripe-connect-id', s.connectClientId) +
+         field('Publishable Key', 'wiz-stripe-pub', s.publishableKey) +
+         field('Secret Key', 'wiz-stripe-secret', s.secretKey) +
+-        field('Webhook Secret', 'wiz-stripe-webhook', s.webhookSecret) +
++        field('Webhook Secret (optional)', 'wiz-stripe-webhook', s.webhookSecret) +
+         '</div>' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (p.connected ? ' on' : '') + '"></span> PayPal</h4>' +
+-        '<p class="connect-note">Create a Live (or Sandbox) app at developer.paypal.com → copy Client ID &amp; Secret. Checkout already uses PayPal OAuth behind the scenes.</p>' +
++        '<div class="howto" style="margin-top:0"><h3>PayPal</h3><ol>' +
++        '<li>Open <a href="https://developer.paypal.com/dashboard/applications" target="_blank" rel="noopener">PayPal Developer</a>.</li>' +
++        '<li>Create (or open) your Live app → copy Client ID &amp; Secret.</li>' +
++        '<li>Paste below → Save. Checkout picks them up automatically.</li>' +
++        '</ol></div>' +
+         field('Client ID', 'wiz-paypal-id', p.clientId) + field('Client Secret', 'wiz-paypal-secret', p.clientSecret) +
+-        '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
++        '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
+     } else if (wizardStep === 3) {
+       const sa = integrations.socialAuth || {};
+       const g = sa.google || {};
+       const a = sa.apple || {};
+       const f = sa.facebook || {};
+-      html = '<h2>Shopper Logins (OAuth)</h2><p class="lead">These are <strong>your</strong> developer apps (Google Cloud / Apple Developer / Meta) — not Cursor’s or a developer’s personal login. Customers then click “Continue with Google” etc. on the shop. Enable a provider only after you paste keys from <em>your</em> console.</p><div class="integration-grid">' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (g.enabled ? ' on' : '') + '"></span> Google</h4>' +
+-        '<p class="connect-note">In <em>your</em> Google Cloud Console → APIs &amp; Services → Credentials → OAuth 2.0 Client (Web).<br>Authorized redirect URI: <code>https://queenscustoms.shop/api/auth/google/callback</code></p>' +
++      html = '<h2>Shopper Logins</h2>' +
++        '<div id="wiz-save-banner" class="save-banner"></div>' +
++        '<p class="lead">Optional — let customers sign in with Google, Apple, or Facebook. These apps belong to <strong>you</strong>. After Save, the buttons appear on the shop login automatically.</p>' +
++        '<div class="howto"><h3>Google (easiest)</h3><ol>' +
++        '<li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Credentials</a>.</li>' +
++        '<li>Create an OAuth Client ID (type: Web application).</li>' +
++        '<li>Add authorized redirect URI exactly: <code>https://queenscustoms.shop/api/auth/google/callback</code></li>' +
++        '<li>Paste Client ID + Secret below, turn Enable ON, tap Save — Google login goes live.</li>' +
++        '</ol></div>' +
++        '<div class="integration-grid">' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (g.enabled && g.clientId ? ' on' : '') + '"></span> Google</h4>' +
+         '<div class="toggle-row"><label for="wiz-google-on">Enable Google Sign-In on the shop</label><input type="checkbox" id="wiz-google-on"' + (g.enabled ? ' checked' : '') + '/></div>' +
+         field('Client ID', 'wiz-google-id', g.clientId) + field('Client Secret', 'wiz-google-secret', g.clientSecret) +
+-        '<div class="connect-actions"><a class="btn-connect google" href="/api/auth/google" target="_blank" rel="noopener">Test Google login →</a></div></div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (a.enabled ? ' on' : '') + '"></span> Apple</h4>' +
+-        '<p class="connect-note">Apple Developer → Identifiers → Services ID + Key (.p8). Return URL: <code>https://queenscustoms.shop/api/auth/apple/callback</code></p>' +
++        '</div>' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (a.enabled && a.clientId ? ' on' : '') + '"></span> Apple</h4>' +
++        '<p class="connect-note">Apple Developer → Services ID + Key (.p8). Return URL: <code>https://queenscustoms.shop/api/auth/apple/callback</code></p>' +
+         '<div class="toggle-row"><label for="wiz-apple-on">Enable Apple Sign-In on the shop</label><input type="checkbox" id="wiz-apple-on"' + (a.enabled ? ' checked' : '') + '/></div>' +
+         field('Services ID (Client ID)', 'wiz-apple-id', a.clientId) +
+         field('Team ID', 'wiz-apple-team', a.teamId) +
+         field('Key ID', 'wiz-apple-key', a.keyId) +
+         '<div class="form-field"><label>Private Key (.p8 contents)</label><textarea id="wiz-apple-private" placeholder="-----BEGIN PRIVATE KEY-----">' + esc(a.privateKey || '') + '</textarea></div>' +
+-        '<div class="connect-actions"><a class="btn-connect apple" href="/api/auth/apple" target="_blank" rel="noopener">Test Apple login →</a></div></div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (f.enabled ? ' on' : '') + '"></span> Facebook</h4>' +
+-        '<p class="connect-note">Meta for Developers → App → Facebook Login. Valid OAuth Redirect: <code>https://queenscustoms.shop/api/auth/facebook/callback</code></p>' +
++        '</div>' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (f.enabled && (f.appId || f.clientId) ? ' on' : '') + '"></span> Facebook</h4>' +
++        '<p class="connect-note">Meta for Developers → Facebook Login. Redirect: <code>https://queenscustoms.shop/api/auth/facebook/callback</code></p>' +
+         '<div class="toggle-row"><label for="wiz-fb-on">Enable Facebook Sign-In on the shop</label><input type="checkbox" id="wiz-fb-on"' + (f.enabled ? ' checked' : '') + '/></div>' +
+         field('App ID', 'wiz-fb-id', f.appId || f.clientId) + field('App Secret', 'wiz-fb-secret', f.appSecret || f.clientSecret) +
+-        '<div class="connect-actions"><a class="btn-connect facebook" href="/api/auth/facebook" target="_blank" rel="noopener">Test Facebook login →</a></div></div>' +
+-        '</div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
++        '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
+     } else if (wizardStep === 4) {
+       html = '<h2>Email Marketing</h2><p class="lead">Connect your email platform for newsletters and order updates.</p>' +
+         '<div class="form-field"><label>Provider</label><select id="wiz-email-provider"><option value="mailchimp">Mailchimp</option><option value="klaviyo">Klaviyo</option><option value="sendgrid">SendGrid</option></select></div>' +
+@@ -999,7 +1095,9 @@
+         '<button type="button" class="btn-sm" id="wiz-add-admin" style="margin-top:8px">+ Add Admin</button>' +
+         '<div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-next">Continue →</button></div>';
+     } else {
+-      html = '<div class="complete-icon">👑</div><h2 style="text-align:center">Setup Complete!</h2><p class="lead" style="text-align:center">Your Queens Custom Creations admin portal is configured. Head to Operations to manage your empire.</p>' +
++      html = '<div class="complete-icon">👑</div><h2 style="text-align:center">You’re ready!</h2>' +
++        '<p class="lead" style="text-align:center">Everything you Saved is already live on queenscustoms.shop. No extra install steps.</p>' +
++        statusChecklistHtml() +
+         '<div class="wizard-nav" style="justify-content:center"><button type="button" class="btn-pink" id="wiz-finish">Go to Operations →</button></div>';
+     }
+ 
+@@ -1009,11 +1107,27 @@
+     const back = $('wiz-back');
+     if (back) back.addEventListener('click', () => { wizardStep = Math.max(0, wizardStep - 1); renderWizard(); });
+     const next = $('wiz-next');
+-    if (next) next.addEventListener('click', () => { wizardStep = Math.min(lastStep, wizardStep + 1); renderWizard(); });
++    if (next) next.addEventListener('click', async () => {
++      const nextStep = Math.min(lastStep, wizardStep + 1);
++      try {
++        integrations = await api('/api/admin/integrations', {
++          method: 'PUT',
++          body: { setup: Object.assign({}, integrations.setup || {}, { step: nextStep, complete: false }) }
++        });
++      } catch (_) { /* ignore */ }
++      wizardStep = nextStep;
++      renderWizard();
++    });
+     const saveStep = $('wiz-save-step');
+     if (saveStep) saveStep.addEventListener('click', saveWizardStep);
+     const finish = $('wiz-finish');
+-    if (finish) finish.addEventListener('click', () => setMode('operations'));
++    if (finish) finish.addEventListener('click', async () => {
++      try {
++        integrations = await api('/api/admin/integrations/complete-setup', { method: 'POST', body: {} });
++        toast('Setup marked complete — you’re in Operations');
++      } catch (_) { /* still allow entering ops */ }
++      setMode('operations');
++    });
+ 
+     if (wizardStep === 2) {
+       const connectBtn = $('wiz-stripe-connect');
+@@ -1094,58 +1208,79 @@
+   }
+ 
+   async function saveWizardStep() {
+-    let body = {};
++    let body = { _wizardStep: wizardStep };
+     if (wizardStep === 1) {
+-      body = {
+-        etsy: { apiKey: val('wiz-etsy-key'), shopId: val('wiz-etsy-shop'), connected: !!(val('wiz-etsy-key') && val('wiz-etsy-shop')) },
+-        amazon: { sellerId: val('wiz-amz-seller'), mwsToken: val('wiz-amz-token'), connected: !!(val('wiz-amz-seller') && val('wiz-amz-token')) },
+-        tiktokShop: { appKey: val('wiz-tiktok-key'), appSecret: val('wiz-tiktok-secret'), connected: !!(val('wiz-tiktok-key') && val('wiz-tiktok-secret')) }
+-      };
++      body.etsy = { apiKey: val('wiz-etsy-key'), shopId: val('wiz-etsy-shop'), connected: !!(val('wiz-etsy-key') && val('wiz-etsy-shop')) };
++      body.amazon = { sellerId: val('wiz-amz-seller'), mwsToken: val('wiz-amz-token'), connected: !!(val('wiz-amz-seller') && val('wiz-amz-token')) };
++      body.tiktokShop = { appKey: val('wiz-tiktok-key'), appSecret: val('wiz-tiktok-secret'), connected: !!(val('wiz-tiktok-key') && val('wiz-tiktok-secret')) };
+     } else if (wizardStep === 2) {
+       const prev = integrations.stripe || {};
+       const pub = val('wiz-stripe-pub');
+       const secret = val('wiz-stripe-secret');
+-      body = {
+-        stripe: {
+-          connectClientId: val('wiz-stripe-connect-id'),
+-          publishableKey: pub,
+-          secretKey: secret,
+-          webhookSecret: val('wiz-stripe-webhook'),
+-          stripeUserId: prev.stripeUserId || '',
+-          mode: prev.stripeUserId ? 'connect' : 'keys',
+-          connected: !!(prev.stripeUserId || (pub && secret)),
+-        },
+-        paypal: { clientId: val('wiz-paypal-id'), clientSecret: val('wiz-paypal-secret'), connected: !!(val('wiz-paypal-id') && val('wiz-paypal-secret')) }
++      body.stripe = {
++        connectClientId: val('wiz-stripe-connect-id'),
++        publishableKey: pub,
++        secretKey: secret,
++        webhookSecret: val('wiz-stripe-webhook'),
++        stripeUserId: prev.stripeUserId || '',
++        mode: prev.stripeUserId ? 'connect' : 'keys',
++        connected: !!(prev.stripeUserId || (pub && secret)),
+       };
++      body.paypal = { clientId: val('wiz-paypal-id'), clientSecret: val('wiz-paypal-secret'), connected: !!(val('wiz-paypal-id') && val('wiz-paypal-secret')) };
+     } else if (wizardStep === 3) {
+       const gOn = !!( $('wiz-google-on') && $('wiz-google-on').checked );
+       const aOn = !!( $('wiz-apple-on') && $('wiz-apple-on').checked );
+       const fOn = !!( $('wiz-fb-on') && $('wiz-fb-on').checked );
+       const applePrivate = $('wiz-apple-private') ? $('wiz-apple-private').value.trim() : '';
+-      body = {
+-        socialAuth: {
+-          google: { enabled: gOn, clientId: val('wiz-google-id'), clientSecret: val('wiz-google-secret') },
+-          apple: { enabled: aOn, clientId: val('wiz-apple-id'), teamId: val('wiz-apple-team'), keyId: val('wiz-apple-key'), privateKey: applePrivate },
+-          facebook: { enabled: fOn, appId: val('wiz-fb-id'), appSecret: val('wiz-fb-secret') }
+-        }
++      body.socialAuth = {
++        google: { enabled: gOn, clientId: val('wiz-google-id'), clientSecret: val('wiz-google-secret') },
++        apple: { enabled: aOn, clientId: val('wiz-apple-id'), teamId: val('wiz-apple-team'), keyId: val('wiz-apple-key'), privateKey: applePrivate },
++        facebook: { enabled: fOn, appId: val('wiz-fb-id'), appSecret: val('wiz-fb-secret') }
+       };
+     } else if (wizardStep === 4) {
+       const prov = $('wiz-email-provider').value;
+-      body = {
+-        emailMarketing: {
+-          provider: prov,
+-          apiKey: val('wiz-email-key'),
+-          listId: val('wiz-email-list'),
+-          connected: !!val('wiz-email-key')
+-        }
++      body.emailMarketing = {
++        provider: prov,
++        apiKey: val('wiz-email-key'),
++        listId: val('wiz-email-list'),
++        connected: !!val('wiz-email-key')
+       };
+     }
++
++    const saveBtn = $('wiz-save-step');
++    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
++
+     try {
+-      integrations = await api('/api/admin/integrations', { method: 'PUT', body });
+-      toast('Settings saved');
+-      wizardStep = Math.min(WIZARD_STEPS.length - 1, wizardStep + 1);
++      // Activate endpoint: saves + turns features on + may redirect to Stripe
++      const result = await api('/api/admin/integrations/activate', { method: 'POST', body });
++      integrations = result.integrations || result;
++      const messages = result.messages || ['Saved — your shop updated automatically.'];
++      showSaveBanner(messages, false);
++      toast(messages[0] || 'Saved & activated');
++
++      if (result.nextAction && result.nextAction.type === 'redirect' && result.nextAction.url) {
++        showSaveBanner([result.nextAction.message || 'Opening Stripe…'], false);
++        toast('Opening Stripe to finish connecting…');
++        setTimeout(() => { window.location.href = result.nextAction.url; }, 600);
++        return;
++      }
++
++      // Persist wizard progress so she resumes here next login
++      const nextStep = Math.min(WIZARD_STEPS.length - 1, wizardStep + 1);
++      try {
++        integrations = await api('/api/admin/integrations', {
++          method: 'PUT',
++          body: { setup: Object.assign({}, integrations.setup || {}, { step: nextStep, complete: false }) }
++        });
++      } catch (_) { /* non-blocking */ }
++
++      wizardStep = nextStep;
+       renderWizard();
+-    } catch (e) { toast(e.message || 'Save failed', 'error'); }
++    } catch (e) {
++      showSaveBanner([e.message || 'Save failed — check the keys and try again.'], true);
++      toast(e.message || 'Save failed', 'error');
++      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = wizardStep === 2 || wizardStep === 3 ? 'Save & Activate →' : 'Save & Continue →'; }
++    }
+   }
+ 
+   function val(id) { const el = $(id); return el ? el.value.trim() : ''; }
+diff --git a/db.js b/db.js
+index 0a873d1..7208d9c 100644
+--- a/db.js
++++ b/db.js
+@@ -198,6 +198,7 @@ async function initDB() {
+         apple: { enabled: false, clientId: '', teamId: '', keyId: '', privateKey: '' },
+         facebook: { enabled: false, appId: '', appSecret: '' },
+       },
++      setup: { complete: false, step: 0, lastSavedAt: null },
+     };
+     db.run("INSERT INTO integrations (id, settings) VALUES (1, ?)", [JSON.stringify(defaults)]);
+     saveDB();
+@@ -221,6 +222,10 @@ async function initDB() {
+         s.stripe.mode = s.stripe.mode || 'keys';
+         changed = true;
+       }
++      if (!s.setup) {
++        s.setup = { complete: false, step: 0, lastSavedAt: null };
++        changed = true;
++      }
+       if (changed) {
+         db.run("UPDATE integrations SET settings=?, updated_at=datetime('now') WHERE id=1", [JSON.stringify(s)]);
+         saveDB();
+diff --git a/server.js b/server.js
+index 808aac7..4db13d0 100644
+--- a/server.js
++++ b/server.js
+@@ -457,6 +457,98 @@ app.put('/api/admin/integrations', adminMiddleware, (req, res) => {
+   res.json(maskSecrets(merged));
+ });
+ 
++/** After Save: report what's live + optional next browser action (no terminal). */
++app.post('/api/admin/integrations/activate', adminMiddleware, async (req, res) => {
++  try {
++    const row = queryOne('SELECT settings FROM integrations WHERE id = 1');
++    const current = row ? JSON.parse(row.settings) : {};
++    const payload = Object.assign({}, req.body || {});
++    const step = typeof payload._wizardStep === 'number' ? payload._wizardStep : null;
++    delete payload._wizardStep;
++    const merged = mergeSkipMasked(current, payload);
++
++    merged.setup = Object.assign({}, merged.setup || {}, {
++      step: step != null ? step : (merged.setup && merged.setup.step) || 0,
++      lastSavedAt: new Date().toISOString(),
++      complete: !!(merged.setup && merged.setup.complete),
++    });
++
++    if (row) {
++      run("UPDATE integrations SET settings=?, updated_at=datetime('now') WHERE id=1", [JSON.stringify(merged)]);
++    } else {
++      run('INSERT INTO integrations (id, settings) VALUES (1, ?)', [JSON.stringify(merged)]);
++    }
++
++    const stripe = merged.stripe || {};
++    const social = merged.socialAuth || {};
++    const paypal = merged.paypal || {};
++    const status = {
++      stripeConnected: !!(stripe.connected || stripe.stripeUserId),
++      stripeKeysReady: !!(stripe.secretKey && (stripe.publishableKey || stripe.stripeUserId)),
++      stripeConnectReady: !!(stripe.connectClientId && stripe.secretKey) && !stripe.stripeUserId,
++      paypalReady: !!(paypal.clientId && paypal.clientSecret),
++      googleLive: !!(social.google && social.google.enabled && social.google.clientId && social.google.clientSecret),
++      appleLive: !!(social.apple && social.apple.enabled && social.apple.clientId && social.apple.teamId && social.apple.keyId && social.apple.privateKey),
++      facebookLive: !!(social.facebook && social.facebook.enabled && (social.facebook.appId || social.facebook.clientId) && (social.facebook.appSecret || social.facebook.clientSecret)),
++    };
++
++    let nextAction = null;
++    // Payments step: automatically hand off to Stripe in the browser after Save
++    if (step === 2 && status.stripeConnectReady) {
++      try {
++        const state = oauth.makeState({ purpose: 'stripe_connect', adminId: req.user.id });
++        nextAction = { type: 'redirect', url: oauth.stripeConnectAuthUrl(state), message: 'Opening Stripe so you can approve the connection…' };
++      } catch (e) {
++        nextAction = { type: 'message', level: 'error', message: e.message };
++      }
++    }
++
++    const messages = [];
++    if (step === 2) {
++      if (status.stripeConnected) messages.push('Stripe is connected and ready for checkout.');
++      else if (status.stripeKeysReady) messages.push('Stripe API keys saved. Checkout can use these keys.');
++      if (status.paypalReady) messages.push('PayPal credentials saved.');
++      if (!status.stripeConnected && !status.stripeKeysReady && !status.paypalReady && !status.stripeConnectReady) {
++        messages.push('Nothing to activate yet — add at least Stripe or PayPal, then hit Save again.');
++      }
++    }
++    if (step === 3) {
++      if (status.googleLive) messages.push('Google Sign-In is now live on your shop login.');
++      if (status.appleLive) messages.push('Apple Sign-In is now live on your shop login.');
++      if (status.facebookLive) messages.push('Facebook Sign-In is now live on your shop login.');
++      if (!status.googleLive && !status.appleLive && !status.facebookLive) {
++        messages.push('No social logins enabled yet. Toggle one on, paste your keys, then Save.');
++      }
++    }
++
++    res.json({
++      integrations: maskSecrets(merged),
++      status,
++      messages,
++      nextAction,
++    });
++  } catch (e) {
++    console.error('[integrations/activate]', e);
++    res.status(500).json({ error: e.message || 'Activation failed' });
++  }
++});
++
++app.post('/api/admin/integrations/complete-setup', adminMiddleware, (req, res) => {
++  const row = queryOne('SELECT settings FROM integrations WHERE id = 1');
++  const current = row ? JSON.parse(row.settings) : {};
++  current.setup = Object.assign({}, current.setup || {}, {
++    complete: true,
++    completedAt: new Date().toISOString(),
++    step: 7,
++  });
++  if (row) {
++    run("UPDATE integrations SET settings=?, updated_at=datetime('now') WHERE id=1", [JSON.stringify(current)]);
++  } else {
++    run('INSERT INTO integrations (id, settings) VALUES (1, ?)', [JSON.stringify(current)]);
++  }
++  res.json(maskSecrets(current));
++});
++
+ // Stripe Connect OAuth (Setup → Payments)
+ app.get('/api/admin/integrations/stripe/connect', adminMiddleware, (req, res) => {
+   try {
 -- 
 2.43.0
 
