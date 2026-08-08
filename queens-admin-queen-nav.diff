@@ -68,7 +68,7 @@ index 52f8cdf..e3d61f1 100644
 -FACEBOOK_APP_SECRET=
 +# Without a key, both coaches still work using free built-in scripts.
 diff --git a/admin/index.html b/admin/index.html
-index 3828cc1..45e7985 100644
+index 3828cc1..b8c4851 100644
 --- a/admin/index.html
 +++ b/admin/index.html
 @@ -52,7 +52,8 @@
@@ -96,7 +96,28 @@ index 3828cc1..45e7985 100644
      .integration-grid { display: grid; gap: 20px; }
      .integration-block { padding: 20px; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border); }
      .integration-block h4 { font-family: var(--font-display); font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
-@@ -251,10 +253,87 @@
+@@ -223,6 +225,20 @@
+     .howto ol { margin: 0; padding-left: 1.2rem; color: var(--text-2); font-size: 0.82rem; line-height: 1.55; }
+     .howto ol li { margin-bottom: 6px; }
+     .howto a { color: var(--pink); text-decoration: underline; }
++    .plain-blurb { font-size: 0.82rem; color: var(--text-2); line-height: 1.5; margin: 0 0 12px; }
++    .btn-open-site {
++      display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px;
++      border: 1px solid var(--pink); background: rgba(255,26,140,0.16); color: #fff;
++      font-family: var(--font-display); font-size: 0.78rem; font-weight: 600; cursor: pointer;
++      text-decoration: none; margin: 0 8px 12px 0;
++    }
++    .btn-open-site:hover { background: rgba(255,26,140,0.28); }
++    .btn-ask-coach {
++      display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px;
++      border: 1px solid var(--border); background: transparent; color: var(--text-2);
++      font-size: 0.75rem; font-weight: 600; cursor: pointer; margin: 0 8px 12px 0;
++    }
++    .btn-ask-coach:hover { border-color: var(--pink); color: #fff; }
+     .status-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
+     .status-list li {
+       display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-2);
+@@ -251,10 +267,87 @@
      #toast.success { border-color: var(--green); color: var(--green); }
      #toast.error { border-color: var(--red); color: var(--red); }
  
@@ -185,7 +206,7 @@ index 3828cc1..45e7985 100644
      @media (max-width: 900px) {
        .wizard-layout { grid-template-columns: 1fr; }
        .ai-panel { order: -1; }
-@@ -269,6 +348,9 @@
+@@ -269,6 +362,9 @@
        thead th:nth-child(3), tbody td:nth-child(3),
        thead th:nth-child(5), tbody td:nth-child(5) { display: none; }
        .step-labels { display: none; }
@@ -195,7 +216,7 @@ index 3828cc1..45e7985 100644
      }
  </style>
  </head>
-@@ -303,6 +385,11 @@
+@@ -303,6 +399,11 @@
      <button class="nav-item" data-page="inquiries"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Inquiries</button>
      <button class="nav-item" data-page="products"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Products</button>
      <button class="nav-item" data-page="admin-users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Admin Users</button>
@@ -207,7 +228,7 @@ index 3828cc1..45e7985 100644
    </nav>
    <div class="sidebar-footer"><button class="logout-btn" id="logout-btn">Sign Out</button></div>
  </aside>
-@@ -330,6 +417,15 @@
+@@ -330,6 +431,15 @@
          <div class="stat-card pink"><div class="stat-label">New Inquiries</div><div class="stat-val" id="stat-inquiries">0</div><div class="stat-sub">Unread</div></div>
          <div class="stat-card"><div class="stat-label">Products</div><div class="stat-val" id="stat-products">0</div><div class="stat-sub">Active</div></div>
        </div>
@@ -223,7 +244,7 @@ index 3828cc1..45e7985 100644
        <div class="card">
          <div class="card-header"><span class="card-title">Recent Orders</span><button type="button" class="filter-tab active" id="dash-view-orders">View All →</button></div>
          <table><thead><tr><th>Order #</th><th>Customer</th><th>Email</th><th>Total</th><th>Status</th><th>Date</th></tr></thead>
-@@ -501,6 +597,7 @@
+@@ -501,6 +611,7 @@
  
  <div id="toast"></div>
  
@@ -231,7 +252,7 @@ index 3828cc1..45e7985 100644
  <script>(function () {
    'use strict';
  
-@@ -623,6 +720,7 @@
+@@ -623,6 +734,7 @@
      hide($('login-screen'));
      show($('main-app'));
      document.body.classList.add('authed');
@@ -239,7 +260,7 @@ index 3828cc1..45e7985 100644
      if (consumeSetupQuery()) return;
      try {
        await loadIntegrations();
-@@ -665,6 +763,9 @@
+@@ -665,6 +777,9 @@
    });
  
    // ── Mode toggle ─────────────────────────────────────────────
@@ -249,7 +270,7 @@ index 3828cc1..45e7985 100644
    function setMode(mode) {
      currentMode = mode;
      document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-@@ -675,6 +776,11 @@
+@@ -675,6 +790,11 @@
        show($('setup-content'));
        sidebar.classList.add('hidden');
        main.classList.add('setup-mode');
@@ -261,7 +282,7 @@ index 3828cc1..45e7985 100644
        loadIntegrations().then(() => renderWizard()).catch(() => renderWizard());
      } else {
        show($('ops-content'));
-@@ -686,6 +792,77 @@
+@@ -686,6 +806,77 @@
      closeSidebar();
    }
  
@@ -339,7 +360,7 @@ index 3828cc1..45e7985 100644
    document.querySelectorAll('.mode-btn').forEach(btn => {
      btn.addEventListener('click', () => setMode(btn.dataset.mode));
    });
-@@ -982,6 +1159,7 @@
+@@ -982,6 +1173,7 @@
      const side = $('setup-status-panel');
      if (side) side.innerHTML = '<p style="font-size:0.75rem;color:var(--text-3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em">Live on your shop</p>' + statusChecklistHtml();
      refreshCoachStatus();
@@ -347,7 +368,7 @@ index 3828cc1..45e7985 100644
    }
  
    async function refreshCoachStatus() {
-@@ -994,7 +1172,7 @@
+@@ -994,7 +1186,7 @@
          el.textContent = 'LLM ready · ' + (st.model || 'gpt-4o-mini');
        } else {
          el.className = 'coach-status-pill';
@@ -356,6 +377,182 @@ index 3828cc1..45e7985 100644
        }
      } catch {
        el.className = 'coach-status-pill';
+@@ -1092,10 +1284,34 @@
+       const e = integrations.etsy || {};
+       const a = integrations.amazon || {};
+       const t = integrations.tiktokShop || {};
+-      html = '<h2>E-Commerce Integrations</h2><p class="lead">Connect your marketplace accounts to sync orders and inventory.</p><div class="integration-grid">' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (e.connected ? ' on' : '') + '"></span> Etsy</h4>' + field('API Key', 'wiz-etsy-key', e.apiKey) + field('Shop ID', 'wiz-etsy-shop', e.shopId) + '</div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (a.connected ? ' on' : '') + '"></span> Amazon</h4>' + field('Seller ID', 'wiz-amz-seller', a.sellerId) + field('MWS Token', 'wiz-amz-token', a.mwsToken) + '</div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (t.connected ? ' on' : '') + '"></span> TikTok Shop</h4>' + field('App Key', 'wiz-tiktok-key', t.appKey) + field('App Secret', 'wiz-tiktok-secret', t.appSecret) + '</div>' +
++      html = '<h2>E-Commerce Integrations</h2>' +
++        '<p class="lead"><strong>Optional.</strong> Only fill these if you already sell on Etsy, Amazon, or TikTok Shop. An “API key” is just a secret password that site gives you — copy it, paste it here, Save. You can leave everything empty and Continue.</p>' +
++        '<div class="howto"><h3>Don’t know what these are?</h3><ol>' +
++        '<li>Tap <strong>Open …</strong> under the shop you use — a new tab opens.</li>' +
++        '<li>Sign in with <em>your</em> seller account.</li>' +
++        '<li>Copy the code they show → paste in the boxes below.</li>' +
++        '<li>Or skip: leave blank → <strong>Save &amp; Continue</strong>.</li>' +
++        '<li>Stuck? Type a question in Setup Coach (right / above) like “What is Shop ID?”</li>' +
++        '</ol></div>' +
++        '<div class="integration-grid">' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (e.connected ? ' on' : '') + '"></span> Etsy</h4>' +
++        '<p class="plain-blurb"><strong>API Key</strong> = secret from Etsy Developers. <strong>Shop ID</strong> = your shop’s number (not your password).</p>' +
++        '<a class="btn-open-site" href="https://www.etsy.com/developers/your-apps" target="_blank" rel="noopener">↗ Open Etsy Developers</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Where do I find my Etsy API Key and Shop ID? Explain simply.">Ask Coach about Etsy</button>' +
++        field('API Key', 'wiz-etsy-key', e.apiKey) + field('Shop ID', 'wiz-etsy-shop', e.shopId) +
++        '</div>' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (a.connected ? ' on' : '') + '"></span> Amazon</h4>' +
++        '<p class="plain-blurb">Only if you sell on Amazon. <strong>Seller ID</strong> is in Seller Central → Settings. Skip if you don’t have Amazon.</p>' +
++        '<a class="btn-open-site" href="https://sellercentral.amazon.com/" target="_blank" rel="noopener">↗ Open Amazon Seller Central</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="I don’t sell on Amazon — can I skip? What is an MWS token?">Ask Coach about Amazon</button>' +
++        field('Seller ID', 'wiz-amz-seller', a.sellerId) + field('MWS Token', 'wiz-amz-token', a.mwsToken) +
++        '</div>' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (t.connected ? ' on' : '') + '"></span> TikTok Shop</h4>' +
++        '<p class="plain-blurb"><strong>App Key</strong> + <strong>App Secret</strong> are two passwords from TikTok Shop Partner Center. Skip if you’re not on TikTok Shop.</p>' +
++        '<a class="btn-open-site" href="https://partner.tiktokshop.com/" target="_blank" rel="noopener">↗ Open TikTok Shop Partner</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="How do I get TikTok Shop App Key and App Secret? Can I skip?">Ask Coach about TikTok</button>' +
++        field('App Key', 'wiz-tiktok-key', t.appKey) + field('App Secret', 'wiz-tiktok-secret', t.appSecret) +
++        '</div>' +
+         '</div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
+     } else if (wizardStep === 2) {
+       const s = integrations.stripe || {};
+@@ -1103,32 +1319,38 @@
+       const stripeOn = !!(s.connected || s.stripeUserId);
+       html = '<h2>Payments</h2>' +
+         '<div id="wiz-save-banner" class="save-banner"></div>' +
+-        '<p class="lead">Connect <strong>your</strong> Stripe and/or PayPal. After you paste keys and hit Save, we activate them on the shop automatically.</p>' +
+-        '<div class="howto"><h3>Stripe (recommended)</h3><ol>' +
+-        '<li>Open <a href="https://dashboard.stripe.com/register" target="_blank" rel="noopener">Stripe</a> and sign in with your business email.</li>' +
+-        '<li>Get your <strong>Secret key</strong> and <strong>Publishable key</strong> from Developers → API keys.</li>' +
+-        '<li>For one-click Connect: copy your Connect <strong>client_id</strong> (starts with ca_) from Settings → Connect.</li>' +
+-        '<li>Paste below → tap <strong>Save &amp; Continue</strong>. If Connect is ready, Stripe opens so you can Approve — then you’re done.</li>' +
++        '<p class="lead">This is how customers pay you. Start with <strong>Stripe</strong> (cards). PayPal is optional. Tap the pink Open buttons — we’ll tell you exactly what to copy.</p>' +
++        '<div class="howto"><h3>Stripe (recommended) — plain English</h3><ol>' +
++        '<li>Tap <strong>Open Stripe API keys</strong> below (or <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">this link</a>) and sign in.</li>' +
++        '<li>Copy the key starting with <strong>pk_</strong> → Publishable Key.</li>' +
++        '<li>Copy the key starting with <strong>sk_</strong> → Secret Key (keep private).</li>' +
++        '<li>Optional: Settings → Connect → copy <strong>ca_</strong> client ID.</li>' +
++        '<li>Paste → <strong>Save &amp; Activate</strong>. We turn checkout on for you.</li>' +
+         '</ol></div>' +
+         '<div class="integration-grid">' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (stripeOn ? ' on' : '') + '"></span> Stripe' +
+         (stripeOn ? ' <span class="connect-status">Connected' + (s.stripeUserId ? ' · ' + esc(s.stripeUserId) : '') + '</span>' : ' <span class="connect-status off">Not connected yet</span>') +
+         '</h4>' +
++        '<a class="btn-open-site" href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">↗ Open Stripe API keys</a>' +
++        '<a class="btn-open-site" href="https://dashboard.stripe.com/register" target="_blank" rel="noopener">↗ Create Stripe account</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Explain Stripe keys like I’m five. What do I paste where?">Ask Coach about Stripe</button>' +
+         '<div class="connect-actions">' +
+         '<button type="button" class="btn-connect stripe" id="wiz-stripe-connect">🔗 Connect with Stripe now</button>' +
+         (s.stripeUserId ? '<button type="button" class="btn-ghost" id="wiz-stripe-disconnect">Disconnect</button>' : '') +
+         '</div>' +
+         field('Connect Client ID (ca_…)', 'wiz-stripe-connect-id', s.connectClientId) +
+-        field('Publishable Key', 'wiz-stripe-pub', s.publishableKey) +
+-        field('Secret Key', 'wiz-stripe-secret', s.secretKey) +
++        field('Publishable Key (pk_…)', 'wiz-stripe-pub', s.publishableKey) +
++        field('Secret Key (sk_…)', 'wiz-stripe-secret', s.secretKey) +
+         field('Webhook Secret (optional)', 'wiz-stripe-webhook', s.webhookSecret) +
+         '</div>' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (p.connected ? ' on' : '') + '"></span> PayPal</h4>' +
+         '<div class="howto" style="margin-top:0"><h3>PayPal</h3><ol>' +
+-        '<li>Open <a href="https://developer.paypal.com/dashboard/applications" target="_blank" rel="noopener">PayPal Developer</a>.</li>' +
+-        '<li>Create (or open) your Live app → copy Client ID &amp; Secret.</li>' +
+-        '<li>Paste below → Save. Checkout picks them up automatically.</li>' +
++        '<li>Tap <strong>Open PayPal Developer</strong> (not only paypal.com).</li>' +
++        '<li>Apps &amp; Credentials → create a <strong>Live</strong> app.</li>' +
++        '<li>Copy Client ID + Secret → paste → Save.</li>' +
+         '</ol></div>' +
++        '<a class="btn-open-site" href="https://developer.paypal.com/dashboard/applications" target="_blank" rel="noopener">↗ Open PayPal Developer</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Do I need PayPal if I already have Stripe?">Ask Coach about PayPal</button>' +
+         field('Client ID', 'wiz-paypal-id', p.clientId) + field('Client Secret', 'wiz-paypal-secret', p.clientSecret) +
+         '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
+     } else if (wizardStep === 3) {
+@@ -1138,20 +1360,23 @@
+       const f = sa.facebook || {};
+       html = '<h2>Shopper Logins</h2>' +
+         '<div id="wiz-save-banner" class="save-banner"></div>' +
+-        '<p class="lead">Optional — let customers sign in with Google, Apple, or Facebook. These apps belong to <strong>you</strong>. After Save, the buttons appear on the shop login automatically.</p>' +
+-        '<div class="howto"><h3>Google (easiest)</h3><ol>' +
+-        '<li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Credentials</a>.</li>' +
+-        '<li>Create an OAuth Client ID (type: Web application).</li>' +
+-        '<li>Add authorized redirect URI exactly: <code>https://queenscustoms.shop/api/auth/google/callback</code></li>' +
+-        '<li>Paste Client ID + Secret below, turn Enable ON, tap Save — Google login goes live.</li>' +
++        '<p class="lead"><strong>Optional.</strong> Let customers tap “Continue with Google” (easiest). Apple &amp; Facebook are extras. These apps are <strong>yours</strong>.</p>' +
++        '<div class="howto"><h3>Google (easiest) — click by click</h3><ol>' +
++        '<li>Tap <strong>Open Google Credentials</strong>.</li>' +
++        '<li>Create an OAuth Client ID → type <strong>Web application</strong>.</li>' +
++        '<li>Add redirect URI exactly: <code>https://queenscustoms.shop/api/auth/google/callback</code></li>' +
++        '<li>Paste Client ID + Secret → turn Enable ON → Save.</li>' +
+         '</ol></div>' +
+         '<div class="integration-grid">' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (g.enabled && g.clientId ? ' on' : '') + '"></span> Google</h4>' +
++        '<a class="btn-open-site" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">↗ Open Google Credentials</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Walk me through Google Sign-In setup simply.">Ask Coach about Google</button>' +
+         '<div class="toggle-row"><label for="wiz-google-on">Enable Google Sign-In on the shop</label><input type="checkbox" id="wiz-google-on"' + (g.enabled ? ' checked' : '') + '/></div>' +
+         field('Client ID', 'wiz-google-id', g.clientId) + field('Client Secret', 'wiz-google-secret', g.clientSecret) +
+         '</div>' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (a.enabled && a.clientId ? ' on' : '') + '"></span> Apple</h4>' +
+-        '<p class="connect-note">Apple Developer → Services ID + Key (.p8). Return URL: <code>https://queenscustoms.shop/api/auth/apple/callback</code></p>' +
++        '<p class="connect-note">Needs a paid Apple Developer account. Skip unless you want the Apple button. Return URL: <code>https://queenscustoms.shop/api/auth/apple/callback</code></p>' +
++        '<a class="btn-open-site" href="https://developer.apple.com/account/resources/identifiers/list" target="_blank" rel="noopener">↗ Open Apple Developer</a>' +
+         '<div class="toggle-row"><label for="wiz-apple-on">Enable Apple Sign-In on the shop</label><input type="checkbox" id="wiz-apple-on"' + (a.enabled ? ' checked' : '') + '/></div>' +
+         field('Services ID (Client ID)', 'wiz-apple-id', a.clientId) +
+         field('Team ID', 'wiz-apple-team', a.teamId) +
+@@ -1160,14 +1385,24 @@
+         '</div>' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (f.enabled && (f.appId || f.clientId) ? ' on' : '') + '"></span> Facebook</h4>' +
+         '<p class="connect-note">Meta for Developers → Facebook Login. Redirect: <code>https://queenscustoms.shop/api/auth/facebook/callback</code></p>' +
++        '<a class="btn-open-site" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">↗ Open Meta for Developers</a>' +
+         '<div class="toggle-row"><label for="wiz-fb-on">Enable Facebook Sign-In on the shop</label><input type="checkbox" id="wiz-fb-on"' + (f.enabled ? ' checked' : '') + '/></div>' +
+         field('App ID', 'wiz-fb-id', f.appId || f.clientId) + field('App Secret', 'wiz-fb-secret', f.appSecret || f.clientSecret) +
+         '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
+     } else if (wizardStep === 4) {
+-      html = '<h2>Email Marketing</h2><p class="lead">Connect your email platform for newsletters and order updates.</p>' +
+-        '<div class="form-field"><label>Provider</label><select id="wiz-email-provider"><option value="mailchimp">Mailchimp</option><option value="klaviyo">Klaviyo</option><option value="sendgrid">SendGrid</option></select></div>' +
++      html = '<h2>Email Marketing</h2>' +
++        '<p class="lead"><strong>Optional.</strong> Only if you want newsletters. Mailchimp is easiest for beginners.</p>' +
++        '<div class="howto"><h3>Mailchimp (recommended if new)</h3><ol>' +
++        '<li>Tap <strong>Open Mailchimp API keys</strong>.</li>' +
++        '<li>Create a key → copy it into API Key below.</li>' +
++        '<li>List / Audience ID is which mailing list new signups join.</li>' +
++        '<li>Or skip — Continue with empty boxes.</li>' +
++        '</ol></div>' +
++        '<a class="btn-open-site" href="https://admin.mailchimp.com/account/api/" target="_blank" rel="noopener">↗ Open Mailchimp API keys</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Do I need email marketing now? What is a List ID?">Ask Coach about email</button>' +
++        '<div class="form-field"><label>Provider</label><select id="wiz-email-provider"><option value="mailchimp">Mailchimp (easiest)</option><option value="klaviyo">Klaviyo</option><option value="sendgrid">SendGrid</option></select></div>' +
+         field('API Key', 'wiz-email-key', em.apiKey) +
+-        '<div id="wiz-list-field" class="form-field"><label>List ID</label><input type="text" id="wiz-email-list" value="' + escAttr(em.listId || '') + '"/></div>' +
++        '<div id="wiz-list-field" class="form-field"><label>List / Audience ID</label><input type="text" id="wiz-email-list" value="' + escAttr(em.listId || '') + '"/></div>' +
+         '<div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
+     } else if (wizardStep === 5) {
+       const data = await api('/api/admin/products');
+@@ -1190,6 +1425,27 @@
+ 
+     main.innerHTML = html;
+ 
++    // Open-site / Ask Coach helpers on guided steps
++    document.querySelectorAll('[data-ask]').forEach(btn => {
++      btn.addEventListener('click', () => {
++        const q = btn.getAttribute('data-ask') || '';
++        const input = $('coach-input');
++        const form = $('coach-form');
++        if (input) {
++          input.value = q;
++          input.focus();
++          // Scroll coach into view on mobile
++          const panel = document.querySelector('.ai-panel');
++          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
++        }
++        if (typeof askSetupCoachMessage === 'function') {
++          askSetupCoachMessage(q);
++        } else if (form) {
++          form.requestSubmit();
++        }
++      });
++    });
++
+     const lastStep = WIZARD_STEPS.length - 1;
+     const back = $('wiz-back');
+     if (back) back.addEventListener('click', () => { wizardStep = Math.max(0, wizardStep - 1); renderWizard(); });
 diff --git a/admin/queen-nav.js b/admin/queen-nav.js
 new file mode 100644
 index 0000000..9ddc4c7
