@@ -1,7 +1,8 @@
 From 54f41d135b752d488295d3bc4ac478787d846f16 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 23:58:23 +0000
-Subject: [PATCH] fix: restore visible Queen Chat on shop + Admin Queen finder
+Subject: [PATCH 1/2] fix: restore visible Queen Chat on shop + Admin Queen
+ finder
 
 Admin floating finder (queen-nav.js) for Ops/Setup navigation; stop
 /admin/* SPA fallback from swallowing JS assets; seed Setup Coach
@@ -717,6 +718,523 @@ index e43dec9..fc2f0fe 100644
 -  .vibe-player { bottom: 16px; right: 12px; }
 +  .vibe-player { bottom: 88px; right: 12px; }
  }
+-- 
+2.43.0
+
+
+From 314c2071c62dac8e32227231d3e85a2a1d3b49a2 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Sat, 8 Aug 2026 00:09:10 +0000
+Subject: [PATCH 2/2] feat: OpenAI Queen Chat + always-visible avatar FAB
+
+Shop Queen Chat calls /api/queen-chat (OpenAI when OPENAI_API_KEY set,
+free rule fallback otherwise). Critical inline CSS keeps the avatar
+visible on mobile. Adds .env.example for GoDaddy key setup.
+---
+ .env.example  |  61 ++--------------
+ index.html    |   2 +-
+ queen-chat.js | 198 +++++++++++++++++++++++++++++++++++++-------------
+ server.js     |  17 +++++
+ setupCoach.js |  94 ++++++++++++++++++++++++
+ 5 files changed, 265 insertions(+), 107 deletions(-)
+
+diff --git a/.env.example b/.env.example
+index 52f8cdf..e3d61f1 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,58 +1,9 @@
+-# Queens Custom Creations — Environment Variables
+-# Copy this file to .env and fill in your credentials
+-# NEVER commit .env to GitHub
++# Copy to .env on the server (GoDaddy Node env vars) — never commit real keys.
+ 
+-# ── PayPal ───────────────────────────────────────────────────────────────────
+-# Get these from: https://developer.paypal.com/dashboard/applications
+-# Create an app → Live → copy Client ID and Secret
+-PAYPAL_CLIENT_ID=YOUR_PAYPAL_CLIENT_ID_HERE
+-PAYPAL_CLIENT_SECRET=YOUR_PAYPAL_CLIENT_SECRET_HERE
+-PAYPAL_ENV=live   # use 'sandbox' for testing, 'live' for real payments
+-
+-# ── Email (AOL SMTP) ──────────────────────────────────────────────────────────
+-# AOL uses app passwords. Generate at: https://login.aol.com → Security → App Passwords
+-# OR use Gmail and generate an App Password at: https://myaccount.google.com/apppasswords
+-SMTP_USER=wired4365@aol.com
+-SMTP_PASS=YOUR_AOL_APP_PASSWORD_HERE
+-
+-# ── Twilio SMS ────────────────────────────────────────────────────────────────
+-# Sign up free at: https://www.twilio.com (free trial gives you $15 credit)
+-# Get your Account SID, Auth Token, and a Twilio phone number
+-TWILIO_SID=YOUR_TWILIO_ACCOUNT_SID
+-TWILIO_TOKEN=YOUR_TWILIO_AUTH_TOKEN
+-TWILIO_FROM=+1XXXXXXXXXX   # Your Twilio phone number
+-
+-# ── Security ──────────────────────────────────────────────────────────────────
+-# Random secret for JWT tokens — use any long random string
+-JWT_SECRET=queens-custom-creations-change-this-to-something-random-2026
+-
+-# ── Extra admin seed (optional; created on first boot if missing) ─────────────
+-ADMIN_SEED_EMAIL=mike@myk.com
+-ADMIN_SEED_PASSWORD=87188718
+-# Built-in seeds (always ensured): wired4365@aol.com, Queenscustoms25@gmail.com
+-
+-# ── Public site URL (OAuth redirects) ─────────────────────────────────────────
+-SITE_URL=https://queenscustoms.shop
+-
+-# ── Setup Coach (optional OpenAI-compatible LLM for /admin Setup) ─────────────
+-# Preferred key name for Setup Coach; falls back to OPENAI_API_KEY if unset.
+-# Never commit real keys. On GoDaddy: Web Hosting → Node app → Environment / .env
+-SETUP_COACH_API_KEY=
+-# OPENAI_API_KEY=
++# OpenAI (powers Setup Coach + shop Queen Chat). gpt-4o-mini is cheap.
++OPENAI_API_KEY=sk-your-key-here
++# Optional alias (same effect):
++# SETUP_COACH_API_KEY=sk-your-key-here
+ SETUP_COACH_MODEL=gpt-4o-mini
+-# SETUP_COACH_BASE_URL=https://api.openai.com/v1
+-
+-# ── Stripe Connect (optional — can also paste in Admin → Setup → Payments) ────
+-# Platform Connect client_id from https://dashboard.stripe.com/settings/connect
+-STRIPE_CONNECT_CLIENT_ID=ca_xxxxxxxx
+-STRIPE_SECRET_KEY=sk_live_xxxxxxxx
+ 
+-# ── Social login (optional — can also paste in Admin → Setup → Logins) ────────
+-GOOGLE_CLIENT_ID=
+-GOOGLE_CLIENT_SECRET=
+-APPLE_CLIENT_ID=
+-APPLE_TEAM_ID=
+-APPLE_KEY_ID=
+-APPLE_PRIVATE_KEY=
+-FACEBOOK_APP_ID=
+-FACEBOOK_APP_SECRET=
++# Without a key, both coaches still work using free built-in scripts.
+diff --git a/index.html b/index.html
+index 25d83e9..961afeb 100644
+--- a/index.html
++++ b/index.html
+@@ -1374,6 +1374,6 @@
+ <script src="tiktok.js?v=1780617330"></script>
+ <script src="music.js?v=1780617330"></script>
+ <script src="checkout.js?v=1780617330"></script>
+-<script src="queen-chat.js?v=1786147200"></script>
++<script src="queen-chat.js?v=1786147800"></script>
+ </body>
+ </html>
+diff --git a/queen-chat.js b/queen-chat.js
+index 9c61326..5121639 100644
+--- a/queen-chat.js
++++ b/queen-chat.js
+@@ -1,5 +1,7 @@
+ /* Queens Custom Creations — Queen Chat (The Vibe Queen) */
+ (function () {
++  'use strict';
++
+   const AVATAR = 'assets/artist.jpg';
+   const QUICK = [
+     'How much for a custom tumbler?',
+@@ -8,21 +10,98 @@
+     'Do you do bulk / party orders?',
+   ];
+ 
+-  const REPLIES = {
+-    price: "Customs start at $40. Price depends on size, glitter, and how detailed your design is — drop what you're dreaming up and I'll quote you 👑",
+-    ship: 'Most customs ship in about 2–3 weeks (bulk can take longer). Rush options are available when I have studio space — ask and I\'ll check!',
+-    design: 'Yes queen! Upload inspo, a screenshot, or describe the vibe in Queens Studio / this chat. I\'ll make it one-of-a-kind.',
+-    bulk: 'Absolutely — birthday squads, bridal parties, team cups, all of it. Tell me quantity + theme and I\'ll send bulk pricing.',
+-    default: "Got it — leave your name, email, and message below and I'll reply personally (usually within 24 hours). 💕",
+-  };
+-
+-  function guessReply(text) {
+-    const t = text.toLowerCase();
+-    if (/price|cost|how much|\$/.test(t)) return REPLIES.price;
+-    if (/ship|deliver|turnaround|how long|week/.test(t)) return REPLIES.ship;
+-    if (/design|upload|photo|logo|custom idea|inspo/.test(t)) return REPLIES.design;
+-    if (/bulk|party|squad|bridal|team|dozen/.test(t)) return REPLIES.bulk;
+-    return REPLIES.default;
++  // Free offline fallback if API is down
++  function localReply(text) {
++    const t = String(text || '').toLowerCase();
++    if (/price|cost|how much|\$/.test(t)) {
++      return "Customs start at $40. Price depends on size, glitter, and how detailed your design is — drop what you're dreaming up and I'll quote you 👑";
++    }
++    if (/ship|deliver|turnaround|how long|week/.test(t)) {
++      return "Most customs ship in about 2–3 weeks (bulk can take longer). Rush options are available when I have studio space — ask and I'll check!";
++    }
++    if (/design|upload|photo|logo|custom idea|inspo/.test(t)) {
++      return "Yes queen! Upload inspo, a screenshot, or describe the vibe in Queens Studio / this chat. I'll make it one-of-a-kind.";
++    }
++    if (/bulk|party|squad|bridal|team|dozen/.test(t)) {
++      return "Absolutely — birthday squads, bridal parties, team cups, all of it. Tell me quantity + theme and I'll send bulk pricing.";
++    }
++    return "Got it — leave your name, email, and message below and I'll reply personally (usually within 24 hours). 💕";
++  }
++
++  async function askQueen(message) {
++    try {
++      const res = await fetch('/api/queen-chat', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({ message: String(message || '').slice(0, 1500) }),
++      });
++      if (!res.ok) throw new Error('bad status');
++      const data = await res.json();
++      return data.reply || localReply(message);
++    } catch (_) {
++      return localReply(message);
++    }
++  }
++
++  // Critical CSS so the avatar can't disappear behind cached styles / Safari chrome
++  if (!document.getElementById('queen-chat-critical-css')) {
++    const style = document.createElement('style');
++    style.id = 'queen-chat-critical-css';
++    style.textContent = `
++      #queen-chat.queen-chat {
++        position: fixed !important;
++        bottom: max(24px, env(safe-area-inset-bottom, 0px) + 16px) !important;
++        left: 16px !important;
++        z-index: 2147483000 !important;
++        font-family: inherit;
++        pointer-events: none !important;
++      }
++      #queen-chat .queen-chat-fab,
++      #queen-chat .queen-chat-panel,
++      #queen-chat .queen-chat-tip {
++        pointer-events: auto !important;
++      }
++      #queen-chat .queen-chat-fab {
++        width: 64px !important; height: 64px !important; border-radius: 50% !important;
++        border: 3px solid #FF1A8C !important; padding: 0 !important; cursor: pointer !important;
++        overflow: hidden !important; background: #111 !important; display: grid !important; place-items: center !important;
++        box-shadow: 0 8px 28px rgba(255,26,140,0.55), 0 0 0 4px rgba(255,26,140,0.2) !important;
++        position: relative !important; color: #fff !important; font-size: 1.6rem !important;
++      }
++      #queen-chat .queen-chat-fab img {
++        width: 100% !important; height: 100% !important; object-fit: cover !important;
++        object-position: center top !important; display: block !important; border-radius: 50% !important;
++      }
++      #queen-chat .qc-dot {
++        position: absolute !important; top: 4px !important; right: 4px !important;
++        width: 12px !important; height: 12px !important; background: #22c55e !important;
++        border: 2px solid #0d0d0d !important; border-radius: 50% !important;
++      }
++      #queen-chat .queen-chat-tip {
++        position: absolute !important; left: 76px !important; bottom: 14px !important;
++        white-space: nowrap !important; background: rgba(13,13,13,0.95) !important; color: #fff !important;
++        border: 1px solid rgba(255,26,140,0.5) !important; border-radius: 999px !important;
++        padding: 8px 14px !important; font-size: 0.78rem !important; font-weight: 700 !important;
++        opacity: 0; transition: opacity 0.25s ease;
++      }
++      #queen-chat:not(.open) .queen-chat-tip.show { opacity: 1 !important; }
++      #queen-chat .queen-chat-panel {
++        position: absolute !important; bottom: 76px !important; left: 0 !important;
++        width: min(360px, calc(100vw - 28px)) !important; max-height: min(520px, calc(100vh - 120px)) !important;
++        background: #141418 !important; border: 1px solid rgba(255,26,140,0.4) !important;
++        border-radius: 20px !important; box-shadow: 0 18px 50px rgba(0,0,0,0.55) !important;
++        display: none; flex-direction: column !important; overflow: hidden !important;
++      }
++      #queen-chat.open .queen-chat-panel { display: flex !important; }
++      @media (max-width: 640px) {
++        #queen-chat.queen-chat {
++          bottom: max(88px, env(safe-area-inset-bottom, 0px) + 72px) !important;
++          left: 12px !important;
++        }
++        #queen-chat .queen-chat-tip { display: none !important; }
++      }
++    `;
++    document.head.appendChild(style);
+   }
+ 
+   function el(html) {
+@@ -31,14 +110,16 @@
+     return t.content.firstElementChild;
+   }
+ 
++  if (document.getElementById('queen-chat')) return;
++
+   const root = el(`
+ <div class="queen-chat" id="queen-chat" aria-live="polite">
+   <div class="queen-chat-panel" id="qc-panel" role="dialog" aria-label="Chat with The Vibe Queen" hidden>
+     <div class="qc-header">
+-      <img src="${AVATAR}" alt="The Vibe Queen" width="44" height="44"/>
++      <img src="${AVATAR}" alt="The Vibe Queen" width="44" height="44" onerror="this.outerHTML='<span style=\\'font-size:1.6rem\\'>👑</span>'"/>
+       <div class="qc-header-text">
+         <strong>The Vibe Queen</strong>
+-        <span>● Usually replies within 24 hrs</span>
++        <span>● Ask me anything about customs</span>
+       </div>
+       <button type="button" class="qc-close" id="qc-close" aria-label="Close chat">×</button>
+     </div>
+@@ -53,25 +134,28 @@
+     </form>
+   </div>
+   <button type="button" class="queen-chat-fab" id="qc-fab" aria-label="Chat with The Vibe Queen" aria-expanded="false">
+-    <span class="qc-pulse" aria-hidden="true"></span>
+-    <img src="${AVATAR}" alt="The Vibe Queen"/>
++    <img src="${AVATAR}" alt="The Vibe Queen" onerror="this.outerHTML='<span>👑</span>'"/>
+     <span class="qc-dot" aria-hidden="true"></span>
+   </button>
+   <div class="queen-chat-tip" id="qc-tip">Chat with The Vibe Queen 👑</div>
+ </div>`);
+ 
+-  document.body.appendChild(root);
++  function mount() {
++    document.body.appendChild(root);
++  }
++  if (document.body) mount();
++  else document.addEventListener('DOMContentLoaded', mount);
+ 
+-  const chat = document.getElementById('queen-chat');
+-  const panel = document.getElementById('qc-panel');
+-  const fab = document.getElementById('qc-fab');
+-  const closeBtn = document.getElementById('qc-close');
+-  const messages = document.getElementById('qc-messages');
+-  const chips = document.getElementById('qc-chips');
+-  const form = document.getElementById('qc-form');
+-  const status = document.getElementById('qc-status');
+-  const tip = document.getElementById('qc-tip');
+-  const msgInput = document.getElementById('qc-message');
++  const chat = root;
++  const panel = root.querySelector('#qc-panel');
++  const fab = root.querySelector('#qc-fab');
++  const closeBtn = root.querySelector('#qc-close');
++  const messages = root.querySelector('#qc-messages');
++  const chips = root.querySelector('#qc-chips');
++  const form = root.querySelector('#qc-form');
++  const status = root.querySelector('#qc-status');
++  const tip = root.querySelector('#qc-tip');
++  const msgInput = root.querySelector('#qc-message');
+ 
+   function addBubble(text, who) {
+     const b = document.createElement('div');
+@@ -105,10 +189,14 @@
+     btn.type = 'button';
+     btn.className = 'qc-chip';
+     btn.textContent = label;
+-    btn.addEventListener('click', () => {
++    btn.addEventListener('click', async () => {
+       msgInput.value = label;
+       addBubble(label, 'user');
+-      addBubble(guessReply(label), 'queen');
++      addBubble('…', 'queen');
++      const reply = await askQueen(label);
++      const last = messages.querySelector('.qc-bubble.queen:last-child');
++      if (last && last.textContent === '…') last.textContent = reply;
++      else addBubble(reply, 'queen');
+       msgInput.focus();
+     });
+     chips.appendChild(btn);
+@@ -124,48 +212,56 @@
+     if (e.key === 'Escape' && chat.classList.contains('open')) closeChat();
+   });
+ 
+-  setTimeout(() => tip.classList.add('show'), 1800);
+-  setTimeout(() => tip.classList.remove('show'), 7000);
++  setTimeout(() => tip.classList.add('show'), 1200);
++  setTimeout(() => tip.classList.remove('show'), 8000);
+ 
+   form.addEventListener('submit', async (e) => {
+     e.preventDefault();
+-    const name = document.getElementById('qc-name').value.trim();
+-    const email = document.getElementById('qc-email').value.trim();
++    const name = root.querySelector('#qc-name').value.trim();
++    const email = root.querySelector('#qc-email').value.trim();
+     const message = msgInput.value.trim();
+     if (!name || !email || !message) return;
+ 
+-    const sendBtn = document.getElementById('qc-send');
++    const sendBtn = root.querySelector('#qc-send');
+     sendBtn.disabled = true;
+     status.textContent = 'Sending…';
+     status.style.color = 'rgba(255,255,255,0.7)';
+ 
+     addBubble(message, 'user');
++    addBubble('…', 'queen');
+ 
+     try {
+-      const res = await fetch('/api/inquiries', {
+-        method: 'POST',
+-        headers: { 'Content-Type': 'application/json' },
+-        body: JSON.stringify({
+-          name,
+-          email,
+-          subject: 'Queen Chat',
+-          message,
+-          source: 'queen-chat',
++      const [inqRes, reply] = await Promise.all([
++        fetch('/api/inquiries', {
++          method: 'POST',
++          headers: { 'Content-Type': 'application/json' },
++          body: JSON.stringify({
++            name,
++            email,
++            subject: 'Queen Chat',
++            message,
++            source: 'queen-chat',
++          }),
+         }),
+-      });
+-      if (!res.ok) throw new Error('bad status');
+-      addBubble(guessReply(message), 'queen');
+-      addBubble("Message locked in — I'll hit your inbox soon. Meanwhile peek at Queens Studio for a full custom build ✨", 'queen');
++        askQueen(message),
++      ]);
++      if (!inqRes.ok) throw new Error('bad status');
++      const last = messages.querySelector('.qc-bubble.queen:last-child');
++      if (last && last.textContent === '…') last.textContent = reply;
++      else addBubble(reply, 'queen');
++      addBubble("Message locked in — I'll also hit your inbox soon. Peek at Queens Studio for a full custom build ✨", 'queen');
+       status.textContent = 'Sent! Check your email for my reply 👑';
+       status.style.color = '#22c55e';
+       msgInput.value = '';
+       chips.style.display = 'none';
+     } catch (err) {
++      const last = messages.querySelector('.qc-bubble.queen:last-child');
++      if (last && last.textContent === '…') last.remove();
+       addBubble(
+         "My chat inbox is warming up — email me at wired4365@aol.com or use the contact form and I'll get back to you!",
+         'queen'
+       );
+-      status.textContent = 'Couldn’t reach the server — try Contact below.';
++      status.textContent = "Couldn't reach the server — try Contact below.";
+       status.style.color = '#f59e0b';
+     } finally {
+       sendBtn.disabled = false;
+diff --git a/server.js b/server.js
+index fd03285..f857a64 100644
+--- a/server.js
++++ b/server.js
+@@ -366,6 +366,23 @@ app.post('/api/inquiries', (req, res) => {
+   res.status(201).json({ success: true, id: result.lastInsertRowid, message: 'Message received! The Vibe Queen responds within 24 hours. 👑' });
+ });
+ 
++// Public Queen Chat — AI when OPENAI_API_KEY / SETUP_COACH_API_KEY set, else free rules
++app.get('/api/queen-chat/status', (req, res) => {
++  res.json(setupCoach.coachStatus());
++});
++
++app.post('/api/queen-chat', async (req, res) => {
++  try {
++    const message = req.body && req.body.message;
++    const result = await setupCoach.answerQueenChat(message);
++    if (result.error) return res.status(result.status || 400).json({ error: result.error });
++    res.json(result);
++  } catch (e) {
++    console.error('[queen-chat]', e);
++    res.status(500).json({ error: e.message || 'Queen Chat failed' });
++  }
++});
++
+ // ── Admin: Products ───────────────────────────────────────────────────────────
+ 
+ app.get('/api/admin/products', adminMiddleware, (req, res) => {
+diff --git a/setupCoach.js b/setupCoach.js
+index 9998353..d6bfe78 100644
+--- a/setupCoach.js
++++ b/setupCoach.js
+@@ -193,9 +193,103 @@ async function answerSetupCoach(message, ctx = {}) {
+   };
+ }
+ 
++function ruleBasedQueenChat(message) {
++  const t = String(message || '').toLowerCase();
++  if (/price|cost|how much|\$/.test(t)) {
++    return "Customs start at $40. Price depends on size, glitter, and how detailed your design is — drop what you're dreaming up and I'll quote you 👑";
++  }
++  if (/ship|deliver|turnaround|how long|week/.test(t)) {
++    return "Most customs ship in about 2–3 weeks (bulk can take longer). Rush options are available when I have studio space — ask and I'll check!";
++  }
++  if (/design|upload|photo|logo|custom idea|inspo/.test(t)) {
++    return "Yes queen! Upload inspo, a screenshot, or describe the vibe in Queens Studio / this chat. I'll make it one-of-a-kind.";
++  }
++  if (/bulk|party|squad|bridal|team|dozen/.test(t)) {
++    return "Absolutely — birthday squads, bridal parties, team cups, all of it. Tell me quantity + theme and I'll send bulk pricing.";
++  }
++  return "Got it — leave your name, email, and message if you want a personal reply (usually within 24 hours). Or ask me about customs, shipping, or bulk 💕";
++}
++
++async function tryOpenAIQueenChat(message) {
++  const apiKey = (process.env.SETUP_COACH_API_KEY || process.env.OPENAI_API_KEY || '').trim();
++  if (!apiKey) return null;
++
++  const model = (process.env.SETUP_COACH_MODEL || 'gpt-4o-mini').trim();
++  const baseUrl = (process.env.SETUP_COACH_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
++
++  const system = [
++    'You are The Vibe Queen, owner of Queens Custom Creations (queenscustoms.shop).',
++    'You handcraft glitter tumblers and customs. Tone: warm, confident, playful, short (under 120 words).',
++    'Answer shop questions: pricing (customs from ~$40), shipping (~2–3 weeks), custom designs, bulk/party orders.',
++    'Do not invent order tracking numbers or claim a payment went through.',
++    'If they want a custom quote, invite them to leave name/email in the chat form or use Queens Studio.',
++    'Never ask for credit card numbers or passwords.',
++  ].join(' ');
++
++  const url = `${baseUrl}/chat/completions`;
++  const controller = new AbortController();
++  const timer = setTimeout(() => controller.abort(), 20000);
++
++  try {
++    const res = await fetch(url, {
++      method: 'POST',
++      headers: {
++        Authorization: `Bearer ${apiKey}`,
++        'Content-Type': 'application/json',
++      },
++      body: JSON.stringify({
++        model,
++        temperature: 0.6,
++        max_tokens: 280,
++        messages: [
++          { role: 'system', content: system },
++          { role: 'user', content: String(message || '').slice(0, 1500) },
++        ],
++      }),
++      signal: controller.signal,
++    });
++    if (!res.ok) {
++      const body = await res.text().catch(() => '');
++      throw new Error(`LLM HTTP ${res.status}: ${body.slice(0, 200)}`);
++    }
++    const data = await res.json();
++    const reply = data?.choices?.[0]?.message?.content?.trim();
++    if (!reply) throw new Error('Empty LLM reply');
++    return { reply, model, source: 'llm' };
++  } finally {
++    clearTimeout(timer);
++  }
++}
++
++async function answerQueenChat(message) {
++  const text = String(message || '').trim();
++  if (!text) {
++    return { error: 'Message required', status: 400 };
++  }
++
++  if (coachKeyConfigured()) {
++    try {
++      const llm = await tryOpenAIQueenChat(text);
++      if (llm?.reply) {
++        return { reply: llm.reply, source: 'llm', model: llm.model };
++      }
++    } catch (err) {
++      console.error('[queen-chat] LLM failed:', err.message || err);
++    }
++  }
++
++  return {
++    reply: ruleBasedQueenChat(text),
++    source: 'rules',
++    model: null,
++  };
++}
++
+ module.exports = {
+   answerSetupCoach,
++  answerQueenChat,
+   coachStatus,
+   ruleBasedSetupCoach,
++  ruleBasedQueenChat,
+   coachKeyConfigured,
+ };
 -- 
 2.43.0
 
