@@ -1,7 +1,7 @@
 From 54f41d135b752d488295d3bc4ac478787d846f16 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 23:58:23 +0000
-Subject: [PATCH 1/2] fix: restore visible Queen Chat on shop + Admin Queen
+Subject: [PATCH 1/4] fix: restore visible Queen Chat on shop + Admin Queen
  finder
 
 Admin floating finder (queen-nav.js) for Ops/Setup navigation; stop
@@ -725,7 +725,7 @@ index e43dec9..fc2f0fe 100644
 From 314c2071c62dac8e32227231d3e85a2a1d3b49a2 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Sat, 8 Aug 2026 00:09:10 +0000
-Subject: [PATCH 2/2] feat: OpenAI Queen Chat + always-visible avatar FAB
+Subject: [PATCH 2/4] feat: OpenAI Queen Chat + always-visible avatar FAB
 
 Shop Queen Chat calls /api/queen-chat (OpenAI when OPENAI_API_KEY set,
 free rule fallback otherwise). Critical inline CSS keeps the avatar
@@ -1235,6 +1235,590 @@ index 9998353..d6bfe78 100644
 +  ruleBasedQueenChat,
    coachKeyConfigured,
  };
+-- 
+2.43.0
+
+
+From 633589aafa6d15cb5050c121fa5f2a101de8ba24 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Sat, 8 Aug 2026 00:20:50 +0000
+Subject: [PATCH 3/4] fix: mobile menu z-index, chat panel size, admin Winks
+ Studio
+
+Raise mob-nav above header so hamburger shows a real drawer; shrink
+Queen Chat panel on phones (no wobble/overflow); add Winks Design
+Studio to admin nav/dashboard; soften Setup Coach status copy.
+---
+ admin/index.html |  31 +++++++--
+ app.js           |  11 +++-
+ index.html       |  10 +--
+ queen-chat.js    | 160 ++++++++++++++++++++++++++++++++++++-----------
+ style.css        |  44 +++++++------
+ 5 files changed, 188 insertions(+), 68 deletions(-)
+
+diff --git a/admin/index.html b/admin/index.html
+index 73c3eab..45e7985 100644
+--- a/admin/index.html
++++ b/admin/index.html
+@@ -52,7 +52,8 @@
+     .login-error { color: var(--red); font-size: 0.82rem; margin-top: 10px; min-height: 18px; }
+ 
+     /* Sidebar */
+-    .sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; transition: transform 0.3s; }
++    .sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; left: 0; top: 0; bottom: 0; z-index: 200; transition: transform 0.3s; }
++    a.nav-item { color: inherit; }
+     .sidebar-brand { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
+     .sidebar-brand .crown { font-size: 24px; margin-bottom: 6px; display: block; }
+     .sidebar-brand h1 { font-family: var(--font-display); font-size: 1.05rem; line-height: 1.2; }
+@@ -185,10 +186,11 @@
+     }
+     .coach-form button:disabled { opacity: 0.55; cursor: wait; }
+     .coach-status-pill {
+-      display: inline-flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 600;
+-      padding: 3px 8px; border-radius: 999px; background: rgba(245,158,11,0.12); color: var(--amber);
++      display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 600;
++      padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,0.08); color: var(--text-2);
++      border: 1px solid var(--border);
+     }
+-    .coach-status-pill.on { background: rgba(34,197,94,0.12); color: var(--green); }
++    .coach-status-pill.on { background: rgba(34,197,94,0.12); color: var(--green); border-color: rgba(34,197,94,0.35); }
+     .integration-grid { display: grid; gap: 20px; }
+     .integration-block { padding: 20px; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+     .integration-block h4 { font-family: var(--font-display); font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+@@ -327,8 +329,11 @@
+ 
+     /* Mobile */
+     .ham { display: none; background: none; border: none; color: var(--text); cursor: pointer; padding: 4px; }
+-    .mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; }
++    .mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 190; display: none; }
+     .mob-overlay.show { display: block; }
++    @media (max-width: 768px) {
++      .sidebar.open { z-index: 220; box-shadow: 8px 0 28px rgba(0,0,0,0.5); }
++    }
+     @media (max-width: 900px) {
+       .wizard-layout { grid-template-columns: 1fr; }
+       .ai-panel { order: -1; }
+@@ -380,6 +385,11 @@
+     <button class="nav-item" data-page="inquiries"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Inquiries</button>
+     <button class="nav-item" data-page="products"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Products</button>
+     <button class="nav-item" data-page="admin-users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Admin Users</button>
++    <div class="nav-section">Studio</div>
++    <a class="nav-item" id="nav-winks-studio" href="/shop/" target="_blank" rel="noopener" style="text-decoration:none">
++      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/></svg>
++      Winks Design Studio
++    </a>
+   </nav>
+   <div class="sidebar-footer"><button class="logout-btn" id="logout-btn">Sign Out</button></div>
+ </aside>
+@@ -407,6 +417,15 @@
+         <div class="stat-card pink"><div class="stat-label">New Inquiries</div><div class="stat-val" id="stat-inquiries">0</div><div class="stat-sub">Unread</div></div>
+         <div class="stat-card"><div class="stat-label">Products</div><div class="stat-val" id="stat-products">0</div><div class="stat-sub">Active</div></div>
+       </div>
++      <div class="card" style="margin-bottom:16px">
++        <div class="card-header">
++          <span class="card-title">Winks Design Studio</span>
++          <a class="filter-tab active" href="/shop/" target="_blank" rel="noopener" style="text-decoration:none">Open Studio →</a>
++        </div>
++        <p style="font-size:0.88rem;color:var(--text-2);line-height:1.5;padding:4px 0 8px">
++          Build custom tumblers with the same studio shoppers use. Opens in a new tab so you can design alongside Operations.
++        </p>
++      </div>
+       <div class="card">
+         <div class="card-header"><span class="card-title">Recent Orders</span><button type="button" class="filter-tab active" id="dash-view-orders">View All →</button></div>
+         <table><thead><tr><th>Order #</th><th>Customer</th><th>Email</th><th>Total</th><th>Status</th><th>Date</th></tr></thead>
+@@ -1153,7 +1172,7 @@
+         el.textContent = 'LLM ready · ' + (st.model || 'gpt-4o-mini');
+       } else {
+         el.className = 'coach-status-pill';
+-        el.textContent = 'Guided tips only (add SETUP_COACH_API_KEY on server)';
++        el.textContent = 'Free guided tips on · optional AI if OPENAI_API_KEY is set';
+       }
+     } catch {
+       el.className = 'coach-status-pill';
+diff --git a/app.js b/app.js
+index 929434a..cbacbb5 100644
+--- a/app.js
++++ b/app.js
+@@ -616,14 +616,23 @@
+       mobileNav.classList.add('open');
+       if (overlay) overlay.classList.add('open');
+       document.body.style.overflow = 'hidden';
++      document.body.classList.add('nav-open');
++      // Close Queen Chat so it can't cover the drawer
++      const qc = document.getElementById('queen-chat');
++      if (qc) qc.classList.remove('open');
+     }
+     function closeNav() {
+       mobileNav.classList.remove('open');
+       if (overlay) overlay.classList.remove('open');
+       document.body.style.overflow = '';
++      document.body.classList.remove('nav-open');
+     }
+ 
+-    burger.addEventListener('click', openNav);
++    burger.addEventListener('click', (e) => {
++      e.preventDefault();
++      e.stopPropagation();
++      openNav();
++    });
+     if (closeBtn) closeBtn.addEventListener('click', closeNav);
+     if (overlay) overlay.addEventListener('click', closeNav);
+ 
+diff --git a/index.html b/index.html
+index 961afeb..7047096 100644
+--- a/index.html
++++ b/index.html
+@@ -142,7 +142,7 @@
+   <meta name="theme-color" content="#FF1A8C"/>
+ 
+   <link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@300,400,500,700&display=swap" rel="stylesheet"/>
+-  <link rel="stylesheet" href="style.css?v=1786147200"/>
++  <link rel="stylesheet" href="style.css?v=1786148500"/>
+ </head>
+ <body>
+ <canvas id="sparkle-canvas" aria-hidden="true"></canvas>
+@@ -180,7 +180,7 @@
+     <nav class="main-nav">
+       <a href="#shop">Shop</a>
+       <a href="#gallery">Gallery</a>
+-      <a href="/shop/" class="nav-studio-link">Studio ✦</a>
++      <a href="/shop/" class="nav-studio-link">Winks Studio ✦</a>
+       <a href="#collections">Collections</a>
+       <a href="#tiktok-section">TikTok</a>
+       <a href="#sessions">Book Session</a>
+@@ -218,7 +218,7 @@
+   <button class="mob-close" id="mob-close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+   <a href="#shop" class="mob-link">Shop</a>
+   <a href="#gallery" class="mob-link">Gallery</a>
+-  <a href="/shop/" class="mob-link nav-studio-link">Studio ✦ — Design & Order</a>
++  <a href="/shop/" class="mob-link nav-studio-link">Winks Design Studio ✦</a>
+   <a href="#collections" class="mob-link">Collections</a>
+   <a href="#tiktok-section" class="mob-link">TikTok</a>
+   <a href="#sessions" class="mob-link">Book a Session</a>
+@@ -1368,12 +1368,12 @@
+ <!-- TOAST -->
+ <div class="toast" id="toast"></div>
+ 
+-<script src="app.js?v=1780617330"></script>
++<script src="app.js?v=1786148500"></script>
+ <script src="builder.js?v=1780617330"></script>
+ <script src="auth.js?v=1780617330"></script>
+ <script src="tiktok.js?v=1780617330"></script>
+ <script src="music.js?v=1780617330"></script>
+ <script src="checkout.js?v=1780617330"></script>
+-<script src="queen-chat.js?v=1786147800"></script>
++<script src="queen-chat.js?v=1786148500"></script>
+ </body>
+ </html>
+diff --git a/queen-chat.js b/queen-chat.js
+index 5121639..8af3ec2 100644
+--- a/queen-chat.js
++++ b/queen-chat.js
+@@ -10,7 +10,6 @@
+     'Do you do bulk / party orders?',
+   ];
+ 
+-  // Free offline fallback if API is down
+   function localReply(text) {
+     const t = String(text || '').toLowerCase();
+     if (/price|cost|how much|\$/.test(t)) {
+@@ -43,16 +42,15 @@
+     }
+   }
+ 
+-  // Critical CSS so the avatar can't disappear behind cached styles / Safari chrome
+   if (!document.getElementById('queen-chat-critical-css')) {
+     const style = document.createElement('style');
+     style.id = 'queen-chat-critical-css';
+     style.textContent = `
+       #queen-chat.queen-chat {
+         position: fixed !important;
+-        bottom: max(24px, env(safe-area-inset-bottom, 0px) + 16px) !important;
+-        left: 16px !important;
+-        z-index: 2147483000 !important;
++        bottom: max(20px, env(safe-area-inset-bottom, 0px) + 12px) !important;
++        left: 14px !important;
++        z-index: 9000 !important; /* below mobile nav (10030) + header stack */
+         font-family: inherit;
+         pointer-events: none !important;
+       }
+@@ -62,43 +60,136 @@
+         pointer-events: auto !important;
+       }
+       #queen-chat .queen-chat-fab {
+-        width: 64px !important; height: 64px !important; border-radius: 50% !important;
++        width: 58px !important; height: 58px !important; border-radius: 50% !important;
+         border: 3px solid #FF1A8C !important; padding: 0 !important; cursor: pointer !important;
+         overflow: hidden !important; background: #111 !important; display: grid !important; place-items: center !important;
+-        box-shadow: 0 8px 28px rgba(255,26,140,0.55), 0 0 0 4px rgba(255,26,140,0.2) !important;
+-        position: relative !important; color: #fff !important; font-size: 1.6rem !important;
++        box-shadow: 0 8px 28px rgba(255,26,140,0.55) !important;
++        position: relative !important; color: #fff !important; font-size: 1.5rem !important;
++        transform: none !important;
+       }
+       #queen-chat .queen-chat-fab img {
+         width: 100% !important; height: 100% !important; object-fit: cover !important;
+         object-position: center top !important; display: block !important; border-radius: 50% !important;
+       }
+       #queen-chat .qc-dot {
+-        position: absolute !important; top: 4px !important; right: 4px !important;
+-        width: 12px !important; height: 12px !important; background: #22c55e !important;
++        position: absolute !important; top: 3px !important; right: 3px !important;
++        width: 11px !important; height: 11px !important; background: #22c55e !important;
+         border: 2px solid #0d0d0d !important; border-radius: 50% !important;
+       }
+       #queen-chat .queen-chat-tip {
+-        position: absolute !important; left: 76px !important; bottom: 14px !important;
++        position: absolute !important; left: 70px !important; bottom: 12px !important;
+         white-space: nowrap !important; background: rgba(13,13,13,0.95) !important; color: #fff !important;
+         border: 1px solid rgba(255,26,140,0.5) !important; border-radius: 999px !important;
+-        padding: 8px 14px !important; font-size: 0.78rem !important; font-weight: 700 !important;
++        padding: 8px 12px !important; font-size: 0.76rem !important; font-weight: 700 !important;
+         opacity: 0; transition: opacity 0.25s ease;
+       }
+       #queen-chat:not(.open) .queen-chat-tip.show { opacity: 1 !important; }
+       #queen-chat .queen-chat-panel {
+-        position: absolute !important; bottom: 76px !important; left: 0 !important;
+-        width: min(360px, calc(100vw - 28px)) !important; max-height: min(520px, calc(100vh - 120px)) !important;
+-        background: #141418 !important; border: 1px solid rgba(255,26,140,0.4) !important;
+-        border-radius: 20px !important; box-shadow: 0 18px 50px rgba(0,0,0,0.55) !important;
+-        display: none; flex-direction: column !important; overflow: hidden !important;
++        position: fixed !important;
++        left: 12px !important;
++        right: 12px !important;
++        bottom: max(84px, env(safe-area-inset-bottom, 0px) + 72px) !important;
++        top: auto !important;
++        width: auto !important;
++        max-width: 400px !important;
++        height: min(58vh, 420px) !important;
++        max-height: min(58vh, 420px) !important;
++        background: #141418 !important;
++        border: 1px solid rgba(255,26,140,0.45) !important;
++        border-radius: 18px !important;
++        box-shadow: 0 16px 40px rgba(0,0,0,0.6) !important;
++        display: none !important;
++        flex-direction: column !important;
++        overflow: hidden !important;
++        transform: none !important;
++        opacity: 1 !important;
++      }
++      #queen-chat.open .queen-chat-panel {
++        display: flex !important;
++      }
++      #queen-chat .qc-header {
++        flex-shrink: 0 !important;
++        display: flex !important; align-items: center !important; gap: 10px !important;
++        padding: 12px 14px !important;
++        background: linear-gradient(135deg, #1a0a12, #2a1020) !important;
++        border-bottom: 1px solid rgba(255,26,140,0.25) !important;
++      }
++      #queen-chat .qc-header img {
++        width: 40px !important; height: 40px !important; border-radius: 50% !important;
++        object-fit: cover !important; border: 2px solid #FF1A8C !important;
++      }
++      #queen-chat .qc-header-text strong { color: #fff !important; font-size: 0.92rem !important; display: block !important; }
++      #queen-chat .qc-header-text span { color: rgba(255,255,255,0.75) !important; font-size: 0.72rem !important; }
++      #queen-chat .qc-close {
++        margin-left: auto !important; width: 32px !important; height: 32px !important;
++        border-radius: 50% !important; border: 1px solid rgba(255,255,255,0.2) !important;
++        background: transparent !important; color: #fff !important; font-size: 1.2rem !important; cursor: pointer !important;
++      }
++      #queen-chat .qc-messages {
++        flex: 1 1 auto !important; min-height: 0 !important; overflow-y: auto !important;
++        padding: 12px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;
++        background: #0f0f12 !important;
++      }
++      #queen-chat .qc-bubble {
++        max-width: 90% !important; padding: 9px 11px !important; border-radius: 12px !important;
++        font-size: 0.84rem !important; line-height: 1.45 !important; color: #fff !important;
++      }
++      #queen-chat .qc-bubble.queen {
++        align-self: flex-start !important; background: rgba(255,26,140,0.18) !important;
++        border: 1px solid rgba(255,26,140,0.4) !important;
++      }
++      #queen-chat .qc-bubble.user {
++        align-self: flex-end !important; background: rgba(255,255,255,0.1) !important;
++        border: 1px solid rgba(255,255,255,0.18) !important;
+       }
+-      #queen-chat.open .queen-chat-panel { display: flex !important; }
++      #queen-chat .qc-chips {
++        flex-shrink: 0 !important; display: flex !important; flex-wrap: wrap !important; gap: 6px !important;
++        padding: 0 12px 8px !important; background: #0f0f12 !important; max-height: 72px !important; overflow: auto !important;
++      }
++      #queen-chat .qc-chip {
++        padding: 6px 10px !important; border-radius: 999px !important;
++        border: 1px solid rgba(255,26,140,0.45) !important; background: rgba(255,26,140,0.12) !important;
++        color: #fff !important; font-size: 0.7rem !important; font-weight: 600 !important; cursor: pointer !important;
++      }
++      #queen-chat .qc-form {
++        flex-shrink: 0 !important; padding: 10px 12px 12px !important;
++        border-top: 1px solid rgba(255,255,255,0.1) !important; background: #141418 !important;
++        display: flex !important; flex-direction: column !important; gap: 7px !important;
++      }
++      #queen-chat .qc-form input,
++      #queen-chat .qc-form textarea {
++        width: 100% !important; box-sizing: border-box !important;
++        padding: 10px 12px !important; border-radius: 10px !important;
++        border: 1px solid rgba(255,255,255,0.22) !important;
++        background: rgba(255,255,255,0.08) !important;
++        color: #fff !important; font-size: 16px !important; /* 16px prevents iOS zoom wobble */
++        font-family: inherit !important; outline: none !important;
++      }
++      #queen-chat .qc-form input::placeholder,
++      #queen-chat .qc-form textarea::placeholder {
++        color: rgba(255,255,255,0.55) !important;
++      }
++      #queen-chat .qc-form textarea { min-height: 52px !important; max-height: 72px !important; resize: none !important; }
++      #queen-chat .qc-send {
++        align-self: flex-end !important; padding: 10px 16px !important; border-radius: 999px !important;
++        border: none !important; background: #FF1A8C !important; color: #fff !important;
++        font-weight: 700 !important; font-size: 0.84rem !important; cursor: pointer !important;
++      }
++      #queen-chat .qc-status { font-size: 0.72rem !important; color: rgba(255,255,255,0.7) !important; min-height: 1em !important; }
+       @media (max-width: 640px) {
+         #queen-chat.queen-chat {
+-          bottom: max(88px, env(safe-area-inset-bottom, 0px) + 72px) !important;
+-          left: 12px !important;
++          bottom: max(78px, env(safe-area-inset-bottom, 0px) + 64px) !important;
++          left: 10px !important;
+         }
+         #queen-chat .queen-chat-tip { display: none !important; }
++        #queen-chat .queen-chat-panel {
++          left: 10px !important; right: 10px !important;
++          bottom: max(148px, env(safe-area-inset-bottom, 0px) + 130px) !important;
++          height: min(52vh, 380px) !important;
++          max-height: min(52vh, 380px) !important;
++          max-width: none !important;
++        }
++        #queen-chat .qc-chips { max-height: 64px !important; }
+       }
+     `;
+     document.head.appendChild(style);
+@@ -116,10 +207,10 @@
+ <div class="queen-chat" id="queen-chat" aria-live="polite">
+   <div class="queen-chat-panel" id="qc-panel" role="dialog" aria-label="Chat with The Vibe Queen" hidden>
+     <div class="qc-header">
+-      <img src="${AVATAR}" alt="The Vibe Queen" width="44" height="44" onerror="this.outerHTML='<span style=\\'font-size:1.6rem\\'>👑</span>'"/>
++      <img src="${AVATAR}" alt="The Vibe Queen" width="40" height="40" onerror="this.outerHTML='<span style=\\'font-size:1.5rem\\'>👑</span>'"/>
+       <div class="qc-header-text">
+         <strong>The Vibe Queen</strong>
+-        <span>● Ask me anything about customs</span>
++        <span>● Ask about customs, shipping, bulk</span>
+       </div>
+       <button type="button" class="qc-close" id="qc-close" aria-label="Close chat">×</button>
+     </div>
+@@ -140,9 +231,7 @@
+   <div class="queen-chat-tip" id="qc-tip">Chat with The Vibe Queen 👑</div>
+ </div>`);
+ 
+-  function mount() {
+-    document.body.appendChild(root);
+-  }
++  function mount() { document.body.appendChild(root); }
+   if (document.body) mount();
+   else document.addEventListener('DOMContentLoaded', mount);
+ 
+@@ -181,7 +270,7 @@
+     fab.setAttribute('aria-expanded', 'false');
+     setTimeout(() => {
+       if (!chat.classList.contains('open')) panel.hidden = true;
+-    }, 220);
++    }, 180);
+   }
+ 
+   QUICK.forEach((label) => {
+@@ -202,7 +291,8 @@
+     chips.appendChild(btn);
+   });
+ 
+-  fab.addEventListener('click', () => {
++  fab.addEventListener('click', (e) => {
++    e.stopPropagation();
+     if (chat.classList.contains('open')) closeChat();
+     else openChat();
+   });
+@@ -212,8 +302,8 @@
+     if (e.key === 'Escape' && chat.classList.contains('open')) closeChat();
+   });
+ 
+-  setTimeout(() => tip.classList.add('show'), 1200);
+-  setTimeout(() => tip.classList.remove('show'), 8000);
++  setTimeout(() => tip.classList.add('show'), 1400);
++  setTimeout(() => tip.classList.remove('show'), 7000);
+ 
+   form.addEventListener('submit', async (e) => {
+     e.preventDefault();
+@@ -225,7 +315,7 @@
+     const sendBtn = root.querySelector('#qc-send');
+     sendBtn.disabled = true;
+     status.textContent = 'Sending…';
+-    status.style.color = 'rgba(255,255,255,0.7)';
++    status.style.color = 'rgba(255,255,255,0.75)';
+ 
+     addBubble(message, 'user');
+     addBubble('…', 'queen');
+@@ -236,11 +326,7 @@
+           method: 'POST',
+           headers: { 'Content-Type': 'application/json' },
+           body: JSON.stringify({
+-            name,
+-            email,
+-            subject: 'Queen Chat',
+-            message,
+-            source: 'queen-chat',
++            name, email, subject: 'Queen Chat', message, source: 'queen-chat',
+           }),
+         }),
+         askQueen(message),
+@@ -249,7 +335,7 @@
+       const last = messages.querySelector('.qc-bubble.queen:last-child');
+       if (last && last.textContent === '…') last.textContent = reply;
+       else addBubble(reply, 'queen');
+-      addBubble("Message locked in — I'll also hit your inbox soon. Peek at Queens Studio for a full custom build ✨", 'queen');
++      addBubble("Message locked in — I'll also hit your inbox soon. Peek at Winks Design Studio for a full custom build ✨", 'queen');
+       status.textContent = 'Sent! Check your email for my reply 👑';
+       status.style.color = '#22c55e';
+       msgInput.value = '';
+@@ -258,7 +344,7 @@
+       const last = messages.querySelector('.qc-bubble.queen:last-child');
+       if (last && last.textContent === '…') last.remove();
+       addBubble(
+-        "My chat inbox is warming up — email me at wired4365@aol.com or use the contact form and I'll get back to you!",
++        "My chat inbox is warming up — email me at wired4365@aol.com or use the contact form!",
+         'queen'
+       );
+       status.textContent = "Couldn't reach the server — try Contact below.";
+diff --git a/style.css b/style.css
+index fc2f0fe..ffb1861 100644
+--- a/style.css
++++ b/style.css
+@@ -203,21 +203,23 @@ h1,h2,h3,h4,h5 {
+   display: none;
+ }
+ 
+-/* Hamburger */
++/* Hamburger — high contrast so it never disappears on dark hero */
+ .ham-btn {
+   display: none;
+   align-items: center; justify-content: center;
+-  width: 40px; height: 40px;
++  width: 42px; height: 42px;
+   border-radius: var(--radius-sm);
+-  color: var(--text);
++  color: #fff;
++  background: rgba(255,26,140,0.18);
++  border: 1px solid rgba(255,26,140,0.55);
+   transition: background var(--dur-fast);
+   position: relative;
+-  z-index: 210;
++  z-index: 10010;
+   cursor: pointer;
+   -webkit-tap-highlight-color: rgba(255,26,140,0.2);
+   touch-action: manipulation;
+ }
+-.ham-btn:hover { background: var(--pink-pale); color: var(--pink); }
++.ham-btn:hover, .ham-btn:focus-visible { background: rgba(255,26,140,0.32); color: #fff; }
+ 
+ /* Search bar */
+ .search-bar {
+@@ -247,11 +249,11 @@ h1,h2,h3,h4,h5 {
+ }
+ #search-input::placeholder { color: var(--text-3); }
+ 
+-/* Mobile nav */
++/* Mobile nav — must sit ABOVE fixed header (9999) + announce bar (10001) */
+ .mob-overlay {
+   position: fixed; inset: 0;
+-  background: rgba(0,0,0,0.5);
+-  z-index: 290;
++  background: rgba(0,0,0,0.62);
++  z-index: 10020;
+   opacity: 0; pointer-events: none;
+   transition: opacity var(--dur-base);
+   backdrop-filter: blur(3px);
+@@ -260,39 +262,43 @@ h1,h2,h3,h4,h5 {
+ .mob-nav {
+   position: fixed;
+   top: 0; left: 0; bottom: 0;
+-  width: 300px;
+-  background: var(--bg);
+-  z-index: 300;
++  width: min(300px, 86vw);
++  background: #141418;
++  color: #fff;
++  z-index: 10030;
+   padding: 24px 20px;
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+-  transform: translateX(-100%);
++  transform: translateX(-105%);
+   transition: transform var(--dur-slow) var(--ease-out);
+   overflow-y: auto;
++  box-shadow: 8px 0 32px rgba(0,0,0,0.55);
++  border-right: 1px solid rgba(255,26,140,0.35);
+ }
+ .mob-nav.open { transform: translateX(0); }
++body.nav-open #queen-chat { visibility: hidden !important; pointer-events: none !important; }
+ .mob-close {
+   align-self: flex-end;
+   width: 36px; height: 36px;
+   border-radius: 50%;
+-  background: var(--grey-1);
++  background: rgba(255,255,255,0.1);
+   display: flex; align-items: center; justify-content: center;
+-  color: var(--text);
++  color: #fff;
+   margin-bottom: 16px;
++  border: 1px solid rgba(255,255,255,0.2);
+ }
+-[data-theme="dark"] .mob-close { background: var(--black-3); }
+ .mob-link {
+   font-family: var(--font-display);
+-  font-size: 1.3rem;
++  font-size: 1.2rem;
+   font-weight: 600;
+-  color: var(--text);
++  color: #fff;
+   padding: 12px 0;
+-  border-bottom: 1px solid var(--border);
++  border-bottom: 1px solid rgba(255,255,255,0.12);
+   display: block;
+   transition: color var(--dur-fast);
+ }
+-.mob-link:hover { color: var(--pink); }
++.mob-link:hover { color: #FF1A8C; }
+ .mob-tiktok-link {
+   margin-top: auto;
+   padding: 14px 20px;
+-- 
+2.43.0
+
+
+From f076a67cce9cb6a959ecc0e06d74eb1efee995f3 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Sat, 8 Aug 2026 00:21:04 +0000
+Subject: [PATCH 4/4] fix: app.js apostrophe that broke mobile menu JS
+
+Unescaped isn't inside a single-quoted product desc stopped app.js
+from parsing, so hamburger only showed a dim overlay.
+---
+ app.js | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/app.js b/app.js
+index cbacbb5..122914a 100644
+--- a/app.js
++++ b/app.js
+@@ -148,7 +148,7 @@
+     {
+       id: 'p13',
+       name: 'Freedom Skull Tumbler',
+-      desc: '30oz dark marble tumbler with patriotic skull cowboy art. Freedom isn't free — drink boldly.',
++      desc: "30oz dark marble tumbler with patriotic skull cowboy art. Freedom isn't free — drink boldly.",
+       price: 40,
+       img: 'assets/products/freedom-skull.jpg',
+       badge: null,
 -- 
 2.43.0
 
