@@ -68,7 +68,7 @@ index 52f8cdf..e3d61f1 100644
 -FACEBOOK_APP_SECRET=
 +# Without a key, both coaches still work using free built-in scripts.
 diff --git a/admin/index.html b/admin/index.html
-index 3828cc1..2656dc5 100644
+index 3828cc1..6397456 100644
 --- a/admin/index.html
 +++ b/admin/index.html
 @@ -52,7 +52,8 @@
@@ -81,22 +81,19 @@ index 3828cc1..2656dc5 100644
      .sidebar-brand { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
      .sidebar-brand .crown { font-size: 24px; margin-bottom: 6px; display: block; }
      .sidebar-brand h1 { font-family: var(--font-display); font-size: 1.05rem; line-height: 1.2; }
-@@ -185,10 +186,11 @@
+@@ -184,11 +185,6 @@
+       background: var(--pink); color: #fff; font-family: var(--font-display); font-weight: 600; font-size: 0.82rem;
      }
      .coach-form button:disabled { opacity: 0.55; cursor: wait; }
-     .coach-status-pill {
+-    .coach-status-pill {
 -      display: inline-flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 600;
 -      padding: 3px 8px; border-radius: 999px; background: rgba(245,158,11,0.12); color: var(--amber);
-+      display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; font-weight: 600;
-+      padding: 5px 10px; border-radius: 999px; background: rgba(255,255,255,0.08); color: var(--text-2);
-+      border: 1px solid var(--border);
-     }
+-    }
 -    .coach-status-pill.on { background: rgba(34,197,94,0.12); color: var(--green); }
-+    .coach-status-pill.on { background: rgba(34,197,94,0.12); color: var(--green); border-color: rgba(34,197,94,0.35); }
      .integration-grid { display: grid; gap: 20px; }
      .integration-block { padding: 20px; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border); }
      .integration-block h4 { font-family: var(--font-display); font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
-@@ -223,6 +225,20 @@
+@@ -223,6 +219,20 @@
      .howto ol { margin: 0; padding-left: 1.2rem; color: var(--text-2); font-size: 0.82rem; line-height: 1.55; }
      .howto ol li { margin-bottom: 6px; }
      .howto a { color: var(--pink); text-decoration: underline; }
@@ -117,20 +114,24 @@ index 3828cc1..2656dc5 100644
      .status-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
      .status-list li {
        display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-2);
-@@ -251,10 +267,87 @@
+@@ -251,10 +261,94 @@
      #toast.success { border-color: var(--green); color: var(--green); }
      #toast.error { border-color: var(--red); color: var(--red); }
  
 +    /* Admin Queen finder — always visible after login (Ops + Setup) */
 +    body:not(.authed) .aq-nav { display: none !important; }
-+    .aq-nav { position: fixed; bottom: 24px; left: 18px; z-index: 12050; font-family: var(--font-body); }
-+    .aq-fab {
-+      width: 62px; height: 62px; border-radius: 50%; border: 2px solid var(--pink);
-+      background: #1a0a12; padding: 0; cursor: pointer; position: relative;
-+      box-shadow: 0 8px 28px rgba(255,26,140,0.5), 0 0 0 4px rgba(255,26,140,0.18);
-+      overflow: hidden; display: grid; place-items: center; color: #fff; font-size: 1.5rem;
++    .aq-nav {
++      position: fixed !important; bottom: 24px !important; left: 18px !important;
++      z-index: 12050 !important; font-family: var(--font-body); pointer-events: none !important;
 +    }
-+    .aq-fab img { width: 100%; height: 100%; object-fit: cover; object-position: center top; border-radius: 50%; display: block; }
++    .aq-nav .aq-fab, .aq-nav .aq-panel, .aq-nav .aq-tip { pointer-events: auto !important; }
++    .aq-fab {
++      width: 64px !important; height: 64px !important; border-radius: 50% !important; border: 3px solid var(--pink) !important;
++      background: #1a0a12 !important; padding: 0 !important; cursor: pointer !important; position: relative !important;
++      box-shadow: 0 8px 28px rgba(255,26,140,0.55), 0 0 0 4px rgba(255,26,140,0.2) !important;
++      overflow: hidden !important; display: grid !important; place-items: center !important; color: #fff !important; font-size: 1.6rem !important;
++    }
++    .aq-fab img { width: 100% !important; height: 100% !important; object-fit: cover !important; object-position: center top !important; border-radius: 50% !important; display: block !important; }
 +    .aq-fab-pulse {
 +      position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgba(255,26,140,0.55);
 +      animation: aq-pulse 2.2s ease-out infinite; pointer-events: none;
@@ -148,13 +149,16 @@ index 3828cc1..2656dc5 100644
 +    }
 +    .aq-nav:not(.open) .aq-tip.show { opacity: 1; }
 +    .aq-panel {
-+      position: absolute; bottom: 74px; left: 0; width: min(360px, calc(100vw - 28px));
-+      background: var(--surface); border: 1px solid rgba(255,26,140,0.35); border-radius: 16px;
-+      box-shadow: 0 16px 48px rgba(0,0,0,0.55); overflow: hidden;
++      position: absolute !important; bottom: 78px !important; left: 0 !important;
++      width: min(340px, calc(100vw - 28px)) !important;
++      background: #141418 !important; border: 1px solid rgba(255,26,140,0.4) !important; border-radius: 16px !important;
++      box-shadow: 0 16px 48px rgba(0,0,0,0.55) !important; overflow: hidden !important;
 +      transform: translateY(12px); opacity: 0; pointer-events: none; transition: all 0.2s;
-+      display: flex; flex-direction: column; max-height: min(520px, calc(100vh - 140px));
++      display: flex !important; flex-direction: column !important;
++      height: min(420px, calc(100vh - 160px)) !important;
++      max-height: min(420px, calc(100vh - 160px)) !important;
 +    }
-+    .aq-nav.open .aq-panel { transform: translateY(0); opacity: 1; pointer-events: auto; }
++    .aq-nav.open .aq-panel { transform: translateY(0); opacity: 1; pointer-events: auto !important; }
 +    .aq-header {
 +      display: flex; align-items: center; gap: 10px; padding: 12px 14px;
 +      border-bottom: 1px solid var(--border); background: linear-gradient(135deg, #1a0a12, #2a1020);
@@ -206,17 +210,24 @@ index 3828cc1..2656dc5 100644
      @media (max-width: 900px) {
        .wizard-layout { grid-template-columns: 1fr; }
        .ai-panel { order: -1; }
-@@ -269,6 +362,9 @@
+@@ -269,6 +363,16 @@
        thead th:nth-child(3), tbody td:nth-child(3),
        thead th:nth-child(5), tbody td:nth-child(5) { display: none; }
        .step-labels { display: none; }
 +      /* Sit above iOS Safari chrome */
-+      .aq-nav { bottom: 92px; left: 12px; }
-+      .aq-tip { display: none; }
++      .aq-nav { bottom: max(88px, env(safe-area-inset-bottom, 0px) + 72px) !important; left: 12px !important; }
++      .aq-tip { display: none !important; }
++      .aq-panel {
++        width: min(320px, calc(100vw - 24px)) !important;
++        height: min(48vh, 360px) !important;
++        max-height: min(48vh, 360px) !important;
++        bottom: 76px !important;
++      }
++      .aq-fab { width: 58px !important; height: 58px !important; }
      }
  </style>
  </head>
-@@ -303,6 +399,11 @@
+@@ -303,6 +407,11 @@
      <button class="nav-item" data-page="inquiries"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Inquiries</button>
      <button class="nav-item" data-page="products"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Products</button>
      <button class="nav-item" data-page="admin-users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Admin Users</button>
@@ -228,7 +239,7 @@ index 3828cc1..2656dc5 100644
    </nav>
    <div class="sidebar-footer"><button class="logout-btn" id="logout-btn">Sign Out</button></div>
  </aside>
-@@ -330,6 +431,15 @@
+@@ -330,6 +439,15 @@
          <div class="stat-card pink"><div class="stat-label">New Inquiries</div><div class="stat-val" id="stat-inquiries">0</div><div class="stat-sub">Unread</div></div>
          <div class="stat-card"><div class="stat-label">Products</div><div class="stat-val" id="stat-products">0</div><div class="stat-sub">Active</div></div>
        </div>
@@ -244,15 +255,25 @@ index 3828cc1..2656dc5 100644
        <div class="card">
          <div class="card-header"><span class="card-title">Recent Orders</span><button type="button" class="filter-tab active" id="dash-view-orders">View All →</button></div>
          <table><thead><tr><th>Order #</th><th>Customer</th><th>Email</th><th>Total</th><th>Status</th><th>Date</th></tr></thead>
-@@ -501,6 +611,7 @@
+@@ -405,9 +523,6 @@
+         <div class="ai-panel">
+           <div class="ai-panel-header"><span>👑</span><h3>Setup Coach</h3></div>
+           <div class="ai-tip" id="ai-tip"></div>
+-          <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+-            <span id="coach-llm-status" class="coach-status-pill">Coach loading…</span>
+-          </div>
+           <div class="coach-log" id="coach-log" aria-live="polite"></div>
+           <form class="coach-form" id="coach-form">
+             <textarea id="coach-input" placeholder="Ask anything — e.g. explain Shop ID like I’m five" maxlength="2000"></textarea>
+@@ -501,6 +616,7 @@
  
  <div id="toast"></div>
  
-+<script src="queen-nav.js?v=2"></script>
++<script src="queen-nav.js?v=3"></script>
  <script>(function () {
    'use strict';
  
-@@ -508,14 +619,14 @@
+@@ -508,14 +624,14 @@
    const ORDER_STATUSES = ['pending','confirmed','in_progress','shipped','delivered','cancelled'];
    const WIZARD_STEPS = ['Welcome','E-Commerce','Payments','Logins','Email','Products','Admins','Complete'];
    const AI_TIPS = [
@@ -273,7 +294,7 @@ index 3828cc1..2656dc5 100644
    ];
    const STEP_INDEX = { welcome: 0, ecommerce: 1, payments: 2, logins: 3, email: 4, products: 5, admins: 6, complete: 7 };
  
-@@ -623,6 +734,7 @@
+@@ -623,6 +739,7 @@
      hide($('login-screen'));
      show($('main-app'));
      document.body.classList.add('authed');
@@ -281,7 +302,7 @@ index 3828cc1..2656dc5 100644
      if (consumeSetupQuery()) return;
      try {
        await loadIntegrations();
-@@ -665,6 +777,9 @@
+@@ -665,6 +782,9 @@
    });
  
    // ── Mode toggle ─────────────────────────────────────────────
@@ -291,7 +312,7 @@ index 3828cc1..2656dc5 100644
    function setMode(mode) {
      currentMode = mode;
      document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-@@ -675,6 +790,11 @@
+@@ -675,6 +795,11 @@
        show($('setup-content'));
        sidebar.classList.add('hidden');
        main.classList.add('setup-mode');
@@ -303,7 +324,7 @@ index 3828cc1..2656dc5 100644
        loadIntegrations().then(() => renderWizard()).catch(() => renderWizard());
      } else {
        show($('ops-content'));
-@@ -686,6 +806,77 @@
+@@ -686,6 +811,60 @@
      closeSidebar();
    }
  
@@ -340,22 +361,6 @@ index 3828cc1..2656dc5 100644
 +    }
 +  }
 +
-+  async function askAdminCoach(message) {
-+    try {
-+      const res = await api('/api/admin/setup-coach', {
-+        method: 'POST',
-+        body: {
-+          message: message,
-+          step: currentMode === 'setup' ? wizardStep : null,
-+          context: { source: 'admin-nav', mode: currentMode },
-+        },
-+      });
-+      return res.reply || '';
-+    } catch (e) {
-+      return e.message || 'Coach unavailable right now.';
-+    }
-+  }
-+
 +  function ensureCoachGreeting() {
 +    const log = $('coach-log');
 +    if (!log || coachGreeted || log.children.length) return;
@@ -374,31 +379,40 @@ index 3828cc1..2656dc5 100644
 +        if (currentMode !== 'setup') setMode('setup');
 +        setTimeout(() => askSetupCoachMessage(q), 500);
 +      },
-+      askAdminCoach: askAdminCoach,
 +    });
 +  }
 +
    document.querySelectorAll('.mode-btn').forEach(btn => {
      btn.addEventListener('click', () => setMode(btn.dataset.mode));
    });
-@@ -982,6 +1173,7 @@
+@@ -981,25 +1160,7 @@
+     $('ai-tip').textContent = AI_TIPS[wizardStep] || '';
      const side = $('setup-status-panel');
      if (side) side.innerHTML = '<p style="font-size:0.75rem;color:var(--text-3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em">Live on your shop</p>' + statusChecklistHtml();
-     refreshCoachStatus();
+-    refreshCoachStatus();
+-  }
+-
+-  async function refreshCoachStatus() {
+-    const el = $('coach-llm-status');
+-    if (!el || !token) return;
+-    try {
+-      const st = await api('/api/admin/setup-coach/status');
+-      if (st.configured) {
+-        el.className = 'coach-status-pill on';
+-        el.textContent = 'LLM ready · ' + (st.model || 'gpt-4o-mini');
+-      } else {
+-        el.className = 'coach-status-pill';
+-        el.textContent = 'Guided tips only (add SETUP_COACH_API_KEY on server)';
+-      }
+-    } catch {
+-      el.className = 'coach-status-pill';
+-      el.textContent = 'Coach status unavailable';
+-    }
 +    ensureCoachGreeting();
    }
  
-   async function refreshCoachStatus() {
-@@ -994,7 +1186,7 @@
-         el.textContent = 'LLM ready · ' + (st.model || 'gpt-4o-mini');
-       } else {
-         el.className = 'coach-status-pill';
--        el.textContent = 'Guided tips only (add SETUP_COACH_API_KEY on server)';
-+        el.textContent = 'Free guided tips on · optional AI if OPENAI_API_KEY is set';
-       }
-     } catch {
-       el.className = 'coach-status-pill';
-@@ -1092,10 +1284,34 @@
+   function appendCoachBubble(text, who) {
+@@ -1092,10 +1253,34 @@
        const e = integrations.etsy || {};
        const a = integrations.amazon || {};
        const t = integrations.tiktokShop || {};
@@ -437,7 +451,7 @@ index 3828cc1..2656dc5 100644
          '</div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
      } else if (wizardStep === 2) {
        const s = integrations.stripe || {};
-@@ -1103,32 +1319,38 @@
+@@ -1103,32 +1288,38 @@
        const stripeOn = !!(s.connected || s.stripeUserId);
        html = '<h2>Payments</h2>' +
          '<div id="wiz-save-banner" class="save-banner"></div>' +
@@ -487,7 +501,7 @@ index 3828cc1..2656dc5 100644
          field('Client ID', 'wiz-paypal-id', p.clientId) + field('Client Secret', 'wiz-paypal-secret', p.clientSecret) +
          '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
      } else if (wizardStep === 3) {
-@@ -1138,20 +1360,23 @@
+@@ -1138,20 +1329,23 @@
        const f = sa.facebook || {};
        html = '<h2>Shopper Logins</h2>' +
          '<div id="wiz-save-banner" class="save-banner"></div>' +
@@ -518,7 +532,7 @@ index 3828cc1..2656dc5 100644
          '<div class="toggle-row"><label for="wiz-apple-on">Enable Apple Sign-In on the shop</label><input type="checkbox" id="wiz-apple-on"' + (a.enabled ? ' checked' : '') + '/></div>' +
          field('Services ID (Client ID)', 'wiz-apple-id', a.clientId) +
          field('Team ID', 'wiz-apple-team', a.teamId) +
-@@ -1160,14 +1385,24 @@
+@@ -1160,14 +1354,24 @@
          '</div>' +
          '<div class="integration-block"><h4><span class="connected-dot' + (f.enabled && (f.appId || f.clientId) ? ' on' : '') + '"></span> Facebook</h4>' +
          '<p class="connect-note">Meta for Developers → Facebook Login. Redirect: <code>https://queenscustoms.shop/api/auth/facebook/callback</code></p>' +
@@ -546,7 +560,7 @@ index 3828cc1..2656dc5 100644
          '<div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
      } else if (wizardStep === 5) {
        const data = await api('/api/admin/products');
-@@ -1190,6 +1425,27 @@
+@@ -1190,6 +1394,27 @@
  
      main.innerHTML = html;
  
@@ -576,10 +590,10 @@ index 3828cc1..2656dc5 100644
      if (back) back.addEventListener('click', () => { wizardStep = Math.max(0, wizardStep - 1); renderWizard(); });
 diff --git a/admin/queen-nav.js b/admin/queen-nav.js
 new file mode 100644
-index 0000000..9ddc4c7
+index 0000000..2a8f67d
 --- /dev/null
 +++ b/admin/queen-nav.js
-@@ -0,0 +1,399 @@
+@@ -0,0 +1,388 @@
 +/**
 + * Admin Queen Navigator — find / jump around Operations + Setup.
 + * Initialized from admin/index.html via QCCAdminQueen.init(bridge).
@@ -833,7 +847,7 @@ index 0000000..9ddc4c7
 +    }
 +  }
 +
-+  async function handleQuery(q, log, input) {
++  function handleQuery(q, log, input) {
 +    const query = (q || '').trim();
 +    if (!query) return;
 +    addBubble(log, esc(query), 'user');
@@ -855,22 +869,11 @@ index 0000000..9ddc4c7
 +      return;
 +    }
 +
-+    // Fall through to Setup Coach API for free-form help
-+    if (bridge && typeof bridge.askAdminCoach === 'function') {
-+      addBubble(log, 'Searching my notes…', 'queen');
-+      try {
-+        const reply = await bridge.askAdminCoach(query);
-+        // remove "Searching…" last queen bubble if it's the placeholder — keep simple: just append
-+        addBubble(log, reply || 'Try asking “where is Stripe?” or “open orders”.', 'queen');
-+        const again = searchIndex(query);
-+        if (again.length) renderHits(log, again, 'Or jump here:');
-+      } catch (_) {
-+        addBubble(log, 'Try words like <strong>Stripe</strong>, <strong>orders</strong>, <strong>inquiries</strong>, or <strong>Setup</strong>.', 'queen');
-+      }
-+      return;
-+    }
-+
-+    addBubble(log, 'Try “Stripe”, “orders”, “products”, or “open Setup”.', 'queen');
++    addBubble(
++      log,
++      'No exact match. Try <strong>Stripe</strong>, <strong>orders</strong>, <strong>inquiries</strong>, <strong>Etsy</strong>, or <strong>Setup</strong> — I’ll jump you there.',
++      'queen'
++    );
 +  }
 +
 +  function init(b) {
@@ -881,7 +884,7 @@ index 0000000..9ddc4c7
 +<div class="aq-nav" id="aq-nav" aria-live="polite">
 +  <div class="aq-panel" id="aq-panel" role="dialog" aria-label="Admin Queen navigator" hidden>
 +    <div class="aq-header">
-+      <img src="../assets/artist.jpg" alt="The Vibe Queen" width="40" height="40" onerror="this.outerHTML='<span style=&quot;font-size:1.6rem&quot;>👑</span>'"/>
++      <img src="/assets/artist.jpg" alt="The Vibe Queen" width="40" height="40" onerror="this.outerHTML='<span style=&quot;font-size:1.6rem&quot;>👑</span>'"/>
 +      <div class="aq-header-text">
 +        <strong>Admin Queen</strong>
 +        <span>Find anything · I’ll take you there</span>
@@ -897,7 +900,7 @@ index 0000000..9ddc4c7
 +  </div>
 +  <button type="button" class="aq-fab" id="aq-fab" aria-label="Open Admin Queen" aria-expanded="false">
 +    <span class="aq-fab-pulse" aria-hidden="true"></span>
-+    <img src="../assets/artist.jpg" alt="" onerror="this.outerHTML='<span>👑</span>'"/>
++    <img src="/assets/artist.jpg" alt="" onerror="this.outerHTML='<span>👑</span>'"/>
 +  </button>
 +  <div class="aq-tip" id="aq-tip">Ask me where something is 👑</div>
 +</div>`);
@@ -1018,7 +1021,7 @@ index 929434a..122914a 100644
      if (overlay) overlay.addEventListener('click', closeNav);
  
 diff --git a/index.html b/index.html
-index 718b0c9..7047096 100644
+index 718b0c9..adc3fd8 100644
 --- a/index.html
 +++ b/index.html
 @@ -142,7 +142,7 @@
@@ -1060,22 +1063,26 @@ index 718b0c9..7047096 100644
  <script src="music.js?v=1780617330"></script>
  <script src="checkout.js?v=1780617330"></script>
 -<script src="queen-chat.js?v=1780618000"></script>
-+<script src="queen-chat.js?v=1786148500"></script>
++<script src="queen-chat.js?v=1786149600"></script>
  </body>
  </html>
 diff --git a/queen-chat.js b/queen-chat.js
-index 9c61326..8af3ec2 100644
+index 9c61326..2b173f1 100644
 --- a/queen-chat.js
 +++ b/queen-chat.js
-@@ -1,5 +1,7 @@
- /* Queens Custom Creations — Queen Chat (The Vibe Queen) */
+@@ -1,6 +1,9 @@
+-/* Queens Custom Creations — Queen Chat (The Vibe Queen) */
++/* Queens Custom Creations — Queen Chat (The Vibe Queen)
++ * Local scripted replies only (no /api/queen-chat). Form still posts inquiries. */
  (function () {
+-  const AVATAR = 'assets/artist.jpg';
 +  'use strict';
 +
-   const AVATAR = 'assets/artist.jpg';
++  const AVATAR = '/assets/artist.jpg';
    const QUICK = [
      'How much for a custom tumbler?',
-@@ -8,21 +10,189 @@
+     'How long does shipping take?',
+@@ -8,21 +11,183 @@
      'Do you do bulk / party orders?',
    ];
  
@@ -1102,28 +1109,13 @@ index 9c61326..8af3ec2 100644
 +    if (/ship|deliver|turnaround|how long|week/.test(t)) {
 +      return "Most customs ship in about 2–3 weeks (bulk can take longer). Rush options are available when I have studio space — ask and I'll check!";
 +    }
-+    if (/design|upload|photo|logo|custom idea|inspo/.test(t)) {
-+      return "Yes queen! Upload inspo, a screenshot, or describe the vibe in Queens Studio / this chat. I'll make it one-of-a-kind.";
++    if (/design|upload|photo|logo|custom idea|inspo|studio|winks/.test(t)) {
++      return "Yes queen! Upload inspo, a screenshot, or describe the vibe in Winks Design Studio / this chat. I'll make it one-of-a-kind.";
 +    }
 +    if (/bulk|party|squad|bridal|team|dozen/.test(t)) {
 +      return "Absolutely — birthday squads, bridal parties, team cups, all of it. Tell me quantity + theme and I'll send bulk pricing.";
 +    }
 +    return "Got it — leave your name, email, and message below and I'll reply personally (usually within 24 hours). 💕";
-+  }
-+
-+  async function askQueen(message) {
-+    try {
-+      const res = await fetch('/api/queen-chat', {
-+        method: 'POST',
-+        headers: { 'Content-Type': 'application/json' },
-+        body: JSON.stringify({ message: String(message || '').slice(0, 1500) }),
-+      });
-+      if (!res.ok) throw new Error('bad status');
-+      const data = await res.json();
-+      return data.reply || localReply(message);
-+    } catch (_) {
-+      return localReply(message);
-+    }
 +  }
 +
 +  if (!document.getElementById('queen-chat-critical-css')) {
@@ -1132,23 +1124,24 @@ index 9c61326..8af3ec2 100644
 +    style.textContent = `
 +      #queen-chat.queen-chat {
 +        position: fixed !important;
-+        bottom: max(20px, env(safe-area-inset-bottom, 0px) + 12px) !important;
-+        left: 14px !important;
-+        z-index: 9000 !important; /* below mobile nav (10030) + header stack */
++        bottom: max(16px, env(safe-area-inset-bottom, 0px) + 10px) !important;
++        left: 12px !important;
++        z-index: 9000 !important;
 +        font-family: inherit;
 +        pointer-events: none !important;
 +      }
++      body.nav-open #queen-chat { display: none !important; }
 +      #queen-chat .queen-chat-fab,
 +      #queen-chat .queen-chat-panel,
 +      #queen-chat .queen-chat-tip {
 +        pointer-events: auto !important;
 +      }
 +      #queen-chat .queen-chat-fab {
-+        width: 58px !important; height: 58px !important; border-radius: 50% !important;
++        width: 60px !important; height: 60px !important; border-radius: 50% !important;
 +        border: 3px solid #FF1A8C !important; padding: 0 !important; cursor: pointer !important;
 +        overflow: hidden !important; background: #111 !important; display: grid !important; place-items: center !important;
 +        box-shadow: 0 8px 28px rgba(255,26,140,0.55) !important;
-+        position: relative !important; color: #fff !important; font-size: 1.5rem !important;
++        position: relative !important; color: #fff !important; font-size: 1.55rem !important;
 +        transform: none !important;
 +      }
 +      #queen-chat .queen-chat-fab img {
@@ -1161,7 +1154,7 @@ index 9c61326..8af3ec2 100644
 +        border: 2px solid #0d0d0d !important; border-radius: 50% !important;
 +      }
 +      #queen-chat .queen-chat-tip {
-+        position: absolute !important; left: 70px !important; bottom: 12px !important;
++        position: absolute !important; left: 72px !important; bottom: 14px !important;
 +        white-space: nowrap !important; background: rgba(13,13,13,0.95) !important; color: #fff !important;
 +        border: 1px solid rgba(255,26,140,0.5) !important; border-radius: 999px !important;
 +        padding: 8px 12px !important; font-size: 0.76rem !important; font-weight: 700 !important;
@@ -1171,13 +1164,12 @@ index 9c61326..8af3ec2 100644
 +      #queen-chat .queen-chat-panel {
 +        position: fixed !important;
 +        left: 12px !important;
-+        right: 12px !important;
-+        bottom: max(84px, env(safe-area-inset-bottom, 0px) + 72px) !important;
++        right: auto !important;
++        bottom: max(88px, env(safe-area-inset-bottom, 0px) + 76px) !important;
 +        top: auto !important;
-+        width: auto !important;
-+        max-width: 400px !important;
-+        height: min(58vh, 420px) !important;
-+        max-height: min(58vh, 420px) !important;
++        width: min(380px, calc(100vw - 24px)) !important;
++        height: min(440px, calc(100vh - 120px)) !important;
++        max-height: min(440px, calc(100vh - 120px)) !important;
 +        background: #141418 !important;
 +        border: 1px solid rgba(255,26,140,0.45) !important;
 +        border-radius: 18px !important;
@@ -1192,7 +1184,7 @@ index 9c61326..8af3ec2 100644
 +        display: flex !important;
 +      }
 +      #queen-chat .qc-header {
-+        flex-shrink: 0 !important;
++        flex: 0 0 auto !important;
 +        display: flex !important; align-items: center !important; gap: 10px !important;
 +        padding: 12px 14px !important;
 +        background: linear-gradient(135deg, #1a0a12, #2a1020) !important;
@@ -1200,17 +1192,20 @@ index 9c61326..8af3ec2 100644
 +      }
 +      #queen-chat .qc-header img {
 +        width: 40px !important; height: 40px !important; border-radius: 50% !important;
-+        object-fit: cover !important; border: 2px solid #FF1A8C !important;
++        object-fit: cover !important; object-position: center top !important;
++        border: 2px solid #FF1A8C !important; flex-shrink: 0 !important;
 +      }
++      #queen-chat .qc-header-text { min-width: 0 !important; flex: 1 !important; }
 +      #queen-chat .qc-header-text strong { color: #fff !important; font-size: 0.92rem !important; display: block !important; }
 +      #queen-chat .qc-header-text span { color: rgba(255,255,255,0.75) !important; font-size: 0.72rem !important; }
 +      #queen-chat .qc-close {
 +        margin-left: auto !important; width: 32px !important; height: 32px !important;
 +        border-radius: 50% !important; border: 1px solid rgba(255,255,255,0.2) !important;
 +        background: transparent !important; color: #fff !important; font-size: 1.2rem !important; cursor: pointer !important;
++        flex-shrink: 0 !important;
 +      }
 +      #queen-chat .qc-messages {
-+        flex: 1 1 auto !important; min-height: 0 !important; overflow-y: auto !important;
++        flex: 1 1 auto !important; min-height: 80px !important; overflow-y: auto !important;
 +        padding: 12px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;
 +        background: #0f0f12 !important;
 +      }
@@ -1227,8 +1222,8 @@ index 9c61326..8af3ec2 100644
 +        border: 1px solid rgba(255,255,255,0.18) !important;
 +      }
 +      #queen-chat .qc-chips {
-+        flex-shrink: 0 !important; display: flex !important; flex-wrap: wrap !important; gap: 6px !important;
-+        padding: 0 12px 8px !important; background: #0f0f12 !important; max-height: 72px !important; overflow: auto !important;
++        flex: 0 0 auto !important; display: flex !important; flex-wrap: wrap !important; gap: 6px !important;
++        padding: 0 12px 8px !important; background: #0f0f12 !important; max-height: 68px !important; overflow: auto !important;
 +      }
 +      #queen-chat .qc-chip {
 +        padding: 6px 10px !important; border-radius: 999px !important;
@@ -1236,7 +1231,7 @@ index 9c61326..8af3ec2 100644
 +        color: #fff !important; font-size: 0.7rem !important; font-weight: 600 !important; cursor: pointer !important;
 +      }
 +      #queen-chat .qc-form {
-+        flex-shrink: 0 !important; padding: 10px 12px 12px !important;
++        flex: 0 0 auto !important; padding: 10px 12px 12px !important;
 +        border-top: 1px solid rgba(255,255,255,0.1) !important; background: #141418 !important;
 +        display: flex !important; flex-direction: column !important; gap: 7px !important;
 +      }
@@ -1246,14 +1241,14 @@ index 9c61326..8af3ec2 100644
 +        padding: 10px 12px !important; border-radius: 10px !important;
 +        border: 1px solid rgba(255,255,255,0.22) !important;
 +        background: rgba(255,255,255,0.08) !important;
-+        color: #fff !important; font-size: 16px !important; /* 16px prevents iOS zoom wobble */
++        color: #fff !important; font-size: 16px !important;
 +        font-family: inherit !important; outline: none !important;
 +      }
 +      #queen-chat .qc-form input::placeholder,
 +      #queen-chat .qc-form textarea::placeholder {
 +        color: rgba(255,255,255,0.55) !important;
 +      }
-+      #queen-chat .qc-form textarea { min-height: 52px !important; max-height: 72px !important; resize: none !important; }
++      #queen-chat .qc-form textarea { min-height: 48px !important; max-height: 64px !important; resize: none !important; }
 +      #queen-chat .qc-send {
 +        align-self: flex-end !important; padding: 10px 16px !important; border-radius: 999px !important;
 +        border: none !important; background: #FF1A8C !important; color: #fff !important;
@@ -1262,25 +1257,31 @@ index 9c61326..8af3ec2 100644
 +      #queen-chat .qc-status { font-size: 0.72rem !important; color: rgba(255,255,255,0.7) !important; min-height: 1em !important; }
 +      @media (max-width: 640px) {
 +        #queen-chat.queen-chat {
-+          bottom: max(78px, env(safe-area-inset-bottom, 0px) + 64px) !important;
++          bottom: max(72px, env(safe-area-inset-bottom, 0px) + 58px) !important;
 +          left: 10px !important;
 +        }
++        #queen-chat .queen-chat-fab { width: 56px !important; height: 56px !important; }
 +        #queen-chat .queen-chat-tip { display: none !important; }
 +        #queen-chat .queen-chat-panel {
-+          left: 10px !important; right: 10px !important;
-+          bottom: max(148px, env(safe-area-inset-bottom, 0px) + 130px) !important;
-+          height: min(52vh, 380px) !important;
-+          max-height: min(52vh, 380px) !important;
-+          max-width: none !important;
++          left: 10px !important;
++          right: 10px !important;
++          width: auto !important;
++          bottom: max(140px, env(safe-area-inset-bottom, 0px) + 120px) !important;
++          height: min(50vh, 360px) !important;
++          max-height: min(50vh, 360px) !important;
 +        }
-+        #queen-chat .qc-chips { max-height: 64px !important; }
++        #queen-chat .qc-chips { max-height: 56px !important; }
++        #queen-chat .qc-form { gap: 5px !important; padding: 8px 10px 10px !important; }
++        #queen-chat .qc-form input,
++        #queen-chat .qc-form textarea { padding: 8px 10px !important; }
++        #queen-chat .qc-messages { min-height: 96px !important; }
 +      }
 +    `;
 +    document.head.appendChild(style);
    }
  
    function el(html) {
-@@ -31,14 +201,16 @@
+@@ -31,14 +196,16 @@
      return t.content.firstElementChild;
    }
  
@@ -1299,7 +1300,7 @@ index 9c61326..8af3ec2 100644
        </div>
        <button type="button" class="qc-close" id="qc-close" aria-label="Close chat">×</button>
      </div>
-@@ -53,25 +225,26 @@
+@@ -53,25 +220,26 @@
      </form>
    </div>
    <button type="button" class="queen-chat-fab" id="qc-fab" aria-label="Chat with The Vibe Queen" aria-expanded="false">
@@ -1339,7 +1340,7 @@ index 9c61326..8af3ec2 100644
  
    function addBubble(text, who) {
      const b = document.createElement('div');
-@@ -97,7 +270,7 @@
+@@ -97,7 +265,7 @@
      fab.setAttribute('aria-expanded', 'false');
      setTimeout(() => {
        if (!chat.classList.contains('open')) panel.hidden = true;
@@ -1348,20 +1349,12 @@ index 9c61326..8af3ec2 100644
    }
  
    QUICK.forEach((label) => {
-@@ -105,16 +278,21 @@
-     btn.type = 'button';
-     btn.className = 'qc-chip';
-     btn.textContent = label;
--    btn.addEventListener('click', () => {
-+    btn.addEventListener('click', async () => {
+@@ -108,13 +276,14 @@
+     btn.addEventListener('click', () => {
        msgInput.value = label;
        addBubble(label, 'user');
 -      addBubble(guessReply(label), 'queen');
-+      addBubble('…', 'queen');
-+      const reply = await askQueen(label);
-+      const last = messages.querySelector('.qc-bubble.queen:last-child');
-+      if (last && last.textContent === '…') last.textContent = reply;
-+      else addBubble(reply, 'queen');
++      addBubble(localReply(label), 'queen');
        msgInput.focus();
      });
      chips.appendChild(btn);
@@ -1373,7 +1366,7 @@ index 9c61326..8af3ec2 100644
      if (chat.classList.contains('open')) closeChat();
      else openChat();
    });
-@@ -124,48 +302,52 @@
+@@ -124,48 +293,44 @@
      if (e.key === 'Escape' && chat.classList.contains('open')) closeChat();
    });
  
@@ -1398,44 +1391,32 @@ index 9c61326..8af3ec2 100644
 +    status.style.color = 'rgba(255,255,255,0.75)';
  
      addBubble(message, 'user');
-+    addBubble('…', 'queen');
++    addBubble(localReply(message), 'queen');
  
      try {
 -      const res = await fetch('/api/inquiries', {
--        method: 'POST',
--        headers: { 'Content-Type': 'application/json' },
--        body: JSON.stringify({
++      const inqRes = await fetch('/api/inquiries', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
 -          name,
 -          email,
 -          subject: 'Queen Chat',
 -          message,
 -          source: 'queen-chat',
-+      const [inqRes, reply] = await Promise.all([
-+        fetch('/api/inquiries', {
-+          method: 'POST',
-+          headers: { 'Content-Type': 'application/json' },
-+          body: JSON.stringify({
-+            name, email, subject: 'Queen Chat', message, source: 'queen-chat',
-+          }),
++          name, email, subject: 'Queen Chat', message, source: 'queen-chat',
          }),
--      });
+       });
 -      if (!res.ok) throw new Error('bad status');
 -      addBubble(guessReply(message), 'queen');
 -      addBubble("Message locked in — I'll hit your inbox soon. Meanwhile peek at Queens Studio for a full custom build ✨", 'queen');
-+        askQueen(message),
-+      ]);
 +      if (!inqRes.ok) throw new Error('bad status');
-+      const last = messages.querySelector('.qc-bubble.queen:last-child');
-+      if (last && last.textContent === '…') last.textContent = reply;
-+      else addBubble(reply, 'queen');
 +      addBubble("Message locked in — I'll also hit your inbox soon. Peek at Winks Design Studio for a full custom build ✨", 'queen');
        status.textContent = 'Sent! Check your email for my reply 👑';
        status.style.color = '#22c55e';
        msgInput.value = '';
        chips.style.display = 'none';
      } catch (err) {
-+      const last = messages.querySelector('.qc-bubble.queen:last-child');
-+      if (last && last.textContent === '…') last.remove();
        addBubble(
 -        "My chat inbox is warming up — email me at wired4365@aol.com or use the contact form and I'll get back to you!",
 +        "My chat inbox is warming up — email me at wired4365@aol.com or use the contact form!",
