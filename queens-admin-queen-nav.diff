@@ -68,7 +68,7 @@ index 52f8cdf..e3d61f1 100644
 -FACEBOOK_APP_SECRET=
 +# Without a key, both coaches still work using free built-in scripts.
 diff --git a/admin/index.html b/admin/index.html
-index 3828cc1..b8c4851 100644
+index 3828cc1..2656dc5 100644
 --- a/admin/index.html
 +++ b/admin/index.html
 @@ -52,7 +52,8 @@
@@ -251,6 +251,27 @@ index 3828cc1..b8c4851 100644
 +<script src="queen-nav.js?v=2"></script>
  <script>(function () {
    'use strict';
+ 
+@@ -508,14 +619,14 @@
+   const ORDER_STATUSES = ['pending','confirmed','in_progress','shipped','delivered','cancelled'];
+   const WIZARD_STEPS = ['Welcome','E-Commerce','Payments','Logins','Email','Products','Admins','Complete'];
+   const AI_TIPS = [
+-    'Everything happens in this Setup screen. Open the links we give you, copy your keys, paste them here, then tap Save — the shop updates by itself.',
+-    'Optional for later: Etsy / Amazon / TikTok. You can skip this step and come back anytime from the Setup toggle.',
+-    'For Stripe: paste your Connect Client ID + Secret Key, then Save. We’ll open Stripe automatically so you can approve the connection. PayPal is paste-and-Save only.',
+-    'Want shoppers to use Google / Apple / Facebook? Create those apps in your own developer accounts, paste the keys, turn Enable ON, then Save — buttons appear on the shop login right away.',
+-    'Email is optional. Paste your Mailchimp / Klaviyo / SendGrid key and Save when you’re ready for newsletters.',
++    'Everything happens here. Use the pink Open … buttons on each step, copy your keys, paste, then Save — the shop updates by itself.',
++    'Etsy / Amazon / TikTok are optional. Tap Open Etsy Developers (etc.) for links + steps, or leave blank and Continue.',
++    'Tap Open Stripe API keys, copy pk_ and sk_, paste, Save. PayPal has its own Open button if you want it too.',
++    'Google is easiest: Open Google Credentials, add the redirect URI we show, paste keys, Enable ON, Save.',
++    'Email is optional. Open Mailchimp API keys if you want newsletters — or Continue to skip.',
+     'Adjust prices or inventory if you want — Save on each row. Or Continue to skip.',
+     'You can add another admin later. Continue when you’re ready.',
+-    'Setup is finished. Operations is your daily dashboard for orders and messages. You can reopen Setup anytime to change keys.'
++    'Setup is finished. Operations is your daily dashboard. Reopen Setup anytime to change keys.'
+   ];
+   const STEP_INDEX = { welcome: 0, ecommerce: 1, payments: 2, logins: 3, email: 4, products: 5, admins: 6, complete: 7 };
  
 @@ -623,6 +734,7 @@
      hide($('login-screen'));

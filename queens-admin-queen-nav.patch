@@ -1,7 +1,7 @@
 From 54f41d135b752d488295d3bc4ac478787d846f16 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Fri, 7 Aug 2026 23:58:23 +0000
-Subject: [PATCH 1/5] fix: restore visible Queen Chat on shop + Admin Queen
+Subject: [PATCH 1/6] fix: restore visible Queen Chat on shop + Admin Queen
  finder
 
 Admin floating finder (queen-nav.js) for Ops/Setup navigation; stop
@@ -725,7 +725,7 @@ index e43dec9..fc2f0fe 100644
 From 314c2071c62dac8e32227231d3e85a2a1d3b49a2 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Sat, 8 Aug 2026 00:09:10 +0000
-Subject: [PATCH 2/5] feat: OpenAI Queen Chat + always-visible avatar FAB
+Subject: [PATCH 2/6] feat: OpenAI Queen Chat + always-visible avatar FAB
 
 Shop Queen Chat calls /api/queen-chat (OpenAI when OPENAI_API_KEY set,
 free rule fallback otherwise). Critical inline CSS keeps the avatar
@@ -1242,7 +1242,7 @@ index 9998353..d6bfe78 100644
 From 633589aafa6d15cb5050c121fa5f2a101de8ba24 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Sat, 8 Aug 2026 00:20:50 +0000
-Subject: [PATCH 3/5] fix: mobile menu z-index, chat panel size, admin Winks
+Subject: [PATCH 3/6] fix: mobile menu z-index, chat panel size, admin Winks
  Studio
 
 Raise mob-nav above header so hamburger shows a real drawer; shrink
@@ -1798,7 +1798,7 @@ index fc2f0fe..ffb1861 100644
 From f076a67cce9cb6a959ecc0e06d74eb1efee995f3 Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Sat, 8 Aug 2026 00:21:04 +0000
-Subject: [PATCH 4/5] fix: app.js apostrophe that broke mobile menu JS
+Subject: [PATCH 4/6] fix: app.js apostrophe that broke mobile menu JS
 
 Unescaped isn't inside a single-quoted product desc stopped app.js
 from parsing, so hamburger only showed a dim overlay.
@@ -1826,7 +1826,7 @@ index cbacbb5..122914a 100644
 From 27fa0430a684b62663c0809ff0903355b71c124d Mon Sep 17 00:00:00 2001
 From: Cursor Agent <cursoragent@cursor.com>
 Date: Sat, 8 Aug 2026 00:28:58 +0000
-Subject: [PATCH 5/5] feat: Setup steps with Open links and plain-English
+Subject: [PATCH 5/6] feat: Setup steps with Open links and plain-English
  guides
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
@@ -2040,6 +2040,44 @@ index 45e7985..b8c4851 100644
      const lastStep = WIZARD_STEPS.length - 1;
      const back = $('wiz-back');
      if (back) back.addEventListener('click', () => { wizardStep = Math.max(0, wizardStep - 1); renderWizard(); });
+-- 
+2.43.0
+
+
+From cf6145066b5970fa04ddca8ddcc755ce392d3dfe Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Sat, 8 Aug 2026 00:29:09 +0000
+Subject: [PATCH 6/6] docs: clarify Setup coach tips about Open buttons
+
+---
+ admin/index.html | 12 ++++++------
+ 1 file changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/admin/index.html b/admin/index.html
+index b8c4851..2656dc5 100644
+--- a/admin/index.html
++++ b/admin/index.html
+@@ -619,14 +619,14 @@
+   const ORDER_STATUSES = ['pending','confirmed','in_progress','shipped','delivered','cancelled'];
+   const WIZARD_STEPS = ['Welcome','E-Commerce','Payments','Logins','Email','Products','Admins','Complete'];
+   const AI_TIPS = [
+-    'Everything happens in this Setup screen. Open the links we give you, copy your keys, paste them here, then tap Save — the shop updates by itself.',
+-    'Optional for later: Etsy / Amazon / TikTok. You can skip this step and come back anytime from the Setup toggle.',
+-    'For Stripe: paste your Connect Client ID + Secret Key, then Save. We’ll open Stripe automatically so you can approve the connection. PayPal is paste-and-Save only.',
+-    'Want shoppers to use Google / Apple / Facebook? Create those apps in your own developer accounts, paste the keys, turn Enable ON, then Save — buttons appear on the shop login right away.',
+-    'Email is optional. Paste your Mailchimp / Klaviyo / SendGrid key and Save when you’re ready for newsletters.',
++    'Everything happens here. Use the pink Open … buttons on each step, copy your keys, paste, then Save — the shop updates by itself.',
++    'Etsy / Amazon / TikTok are optional. Tap Open Etsy Developers (etc.) for links + steps, or leave blank and Continue.',
++    'Tap Open Stripe API keys, copy pk_ and sk_, paste, Save. PayPal has its own Open button if you want it too.',
++    'Google is easiest: Open Google Credentials, add the redirect URI we show, paste keys, Enable ON, Save.',
++    'Email is optional. Open Mailchimp API keys if you want newsletters — or Continue to skip.',
+     'Adjust prices or inventory if you want — Save on each row. Or Continue to skip.',
+     'You can add another admin later. Continue when you’re ready.',
+-    'Setup is finished. Operations is your daily dashboard for orders and messages. You can reopen Setup anytime to change keys.'
++    'Setup is finished. Operations is your daily dashboard. Reopen Setup anytime to change keys.'
+   ];
+   const STEP_INDEX = { welcome: 0, ecommerce: 1, payments: 2, logins: 3, email: 4, products: 5, admins: 6, complete: 7 };
+ 
 -- 
 2.43.0
 
