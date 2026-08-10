@@ -1,0 +1,2368 @@
+diff --git a/.env.example b/.env.example
+index 52f8cdf..e3d61f1 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,58 +1,9 @@
+-# Queens Custom Creations — Environment Variables
+-# Copy this file to .env and fill in your credentials
+-# NEVER commit .env to GitHub
++# Copy to .env on the server (GoDaddy Node env vars) — never commit real keys.
+ 
+-# ── PayPal ───────────────────────────────────────────────────────────────────
+-# Get these from: https://developer.paypal.com/dashboard/applications
+-# Create an app → Live → copy Client ID and Secret
+-PAYPAL_CLIENT_ID=YOUR_PAYPAL_CLIENT_ID_HERE
+-PAYPAL_CLIENT_SECRET=YOUR_PAYPAL_CLIENT_SECRET_HERE
+-PAYPAL_ENV=live   # use 'sandbox' for testing, 'live' for real payments
+-
+-# ── Email (AOL SMTP) ──────────────────────────────────────────────────────────
+-# AOL uses app passwords. Generate at: https://login.aol.com → Security → App Passwords
+-# OR use Gmail and generate an App Password at: https://myaccount.google.com/apppasswords
+-SMTP_USER=wired4365@aol.com
+-SMTP_PASS=YOUR_AOL_APP_PASSWORD_HERE
+-
+-# ── Twilio SMS ────────────────────────────────────────────────────────────────
+-# Sign up free at: https://www.twilio.com (free trial gives you $15 credit)
+-# Get your Account SID, Auth Token, and a Twilio phone number
+-TWILIO_SID=YOUR_TWILIO_ACCOUNT_SID
+-TWILIO_TOKEN=YOUR_TWILIO_AUTH_TOKEN
+-TWILIO_FROM=+1XXXXXXXXXX   # Your Twilio phone number
+-
+-# ── Security ──────────────────────────────────────────────────────────────────
+-# Random secret for JWT tokens — use any long random string
+-JWT_SECRET=queens-custom-creations-change-this-to-something-random-2026
+-
+-# ── Extra admin seed (optional; created on first boot if missing) ─────────────
+-ADMIN_SEED_EMAIL=mike@myk.com
+-ADMIN_SEED_PASSWORD=87188718
+-# Built-in seeds (always ensured): wired4365@aol.com, Queenscustoms25@gmail.com
+-
+-# ── Public site URL (OAuth redirects) ─────────────────────────────────────────
+-SITE_URL=https://queenscustoms.shop
+-
+-# ── Setup Coach (optional OpenAI-compatible LLM for /admin Setup) ─────────────
+-# Preferred key name for Setup Coach; falls back to OPENAI_API_KEY if unset.
+-# Never commit real keys. On GoDaddy: Web Hosting → Node app → Environment / .env
+-SETUP_COACH_API_KEY=
+-# OPENAI_API_KEY=
++# OpenAI (powers Setup Coach + shop Queen Chat). gpt-4o-mini is cheap.
++OPENAI_API_KEY=sk-your-key-here
++# Optional alias (same effect):
++# SETUP_COACH_API_KEY=sk-your-key-here
+ SETUP_COACH_MODEL=gpt-4o-mini
+-# SETUP_COACH_BASE_URL=https://api.openai.com/v1
+-
+-# ── Stripe Connect (optional — can also paste in Admin → Setup → Payments) ────
+-# Platform Connect client_id from https://dashboard.stripe.com/settings/connect
+-STRIPE_CONNECT_CLIENT_ID=ca_xxxxxxxx
+-STRIPE_SECRET_KEY=sk_live_xxxxxxxx
+ 
+-# ── Social login (optional — can also paste in Admin → Setup → Logins) ────────
+-GOOGLE_CLIENT_ID=
+-GOOGLE_CLIENT_SECRET=
+-APPLE_CLIENT_ID=
+-APPLE_TEAM_ID=
+-APPLE_KEY_ID=
+-APPLE_PRIVATE_KEY=
+-FACEBOOK_APP_ID=
+-FACEBOOK_APP_SECRET=
++# Without a key, both coaches still work using free built-in scripts.
+diff --git a/admin/guide-browser.js b/admin/guide-browser.js
+new file mode 100644
+index 0000000..60d118e
+--- /dev/null
++++ b/admin/guide-browser.js
+@@ -0,0 +1,353 @@
++/**
++ * Setup Guide Browser — side panel with checklist + optional iframe preview.
++ * Many dashboards (Stripe, Google) block iframes; we always open a new tab
++ * and keep the checklist here so she can follow along.
++ */
++(function () {
++  'use strict';
++
++  const GUIDES = {
++    stripe_keys: {
++      title: 'Stripe API keys',
++      url: 'https://dashboard.stripe.com/apikeys',
++      blurb: 'Get your pk_ and sk_ keys so customers can pay you.',
++      steps: [
++        'Sign in to Stripe (or create a free account).',
++        'Stay on Developers → API keys.',
++        'Copy the Publishable key (starts with pk_) — paste it in Setup.',
++        'Reveal and copy the Secret key (starts with sk_) — paste it in Setup.',
++        'Come back here and tap Save & Activate.',
++      ],
++    },
++    stripe_register: {
++      title: 'Create a Stripe account',
++      url: 'https://dashboard.stripe.com/register',
++      blurb: 'Brand-new to Stripe? Start here, then grab your API keys.',
++      steps: [
++        'Create your Stripe account with your business email.',
++        'Finish the short business details Stripe asks for.',
++        'Then open API keys and copy pk_ + sk_ into Setup.',
++      ],
++    },
++    paypal: {
++      title: 'PayPal Developer',
++      url: 'https://developer.paypal.com/dashboard/applications',
++      blurb: 'Optional second checkout button.',
++      steps: [
++        'Sign in to PayPal Developer (not only paypal.com).',
++        'Open Apps & Credentials → Live.',
++        'Create an app if you do not have one.',
++        'Copy Client ID and Secret into Setup → PayPal.',
++      ],
++    },
++    google: {
++      title: 'Google Credentials',
++      url: 'https://console.cloud.google.com/apis/credentials',
++      blurb: '“Continue with Google” for shoppers.',
++      steps: [
++        'Sign in with the Google account for Queens Customs.',
++        'Create (or pick) a project.',
++        'Create Credentials → OAuth client ID → Web application.',
++        'Add redirect URI exactly: https://queenscustoms.shop/api/auth/google/callback',
++        'Copy Client ID + Secret into Setup and turn Enable ON.',
++      ],
++    },
++    apple: {
++      title: 'Apple Developer',
++      url: 'https://developer.apple.com/account/resources/identifiers/list',
++      blurb: 'Optional. Needs a paid Apple Developer account.',
++      steps: [
++        'Sign in to Apple Developer.',
++        'Create a Services ID for Sign in with Apple.',
++        'Set return URL: https://queenscustoms.shop/api/auth/apple/callback',
++        'Paste Services ID, Team ID, Key ID, and .p8 key into Setup.',
++      ],
++    },
++    facebook: {
++      title: 'Meta for Developers',
++      url: 'https://developers.facebook.com/apps/',
++      blurb: 'Optional Facebook login button.',
++      steps: [
++        'Create or open your Meta app.',
++        'Add Facebook Login for Web.',
++        'Set redirect: https://queenscustoms.shop/api/auth/facebook/callback',
++        'Copy App ID + App Secret into Setup.',
++      ],
++    },
++    etsy: {
++      title: 'Etsy Developers',
++      url: 'https://www.etsy.com/developers/your-apps',
++      blurb: 'Optional — only if you sell on Etsy.',
++      steps: [
++        'Sign in with your Etsy seller account.',
++        'Open Your Apps and create / open an app.',
++        'Copy the API key and your Shop ID into Setup.',
++      ],
++    },
++    amazon: {
++      title: 'Amazon Seller Central',
++      url: 'https://sellercentral.amazon.com/',
++      blurb: 'Optional — only if you sell on Amazon.',
++      steps: [
++        'Sign in to Seller Central.',
++        'Find your Seller ID under Settings / Account info.',
++        'Paste Seller ID (and MWS token if you have one) into Setup.',
++      ],
++    },
++    tiktok: {
++      title: 'TikTok Shop Partner',
++      url: 'https://partner.tiktokshop.com/',
++      blurb: 'Optional — only if you use TikTok Shop.',
++      steps: [
++        'Sign in to TikTok Shop Partner Center.',
++        'Open your app credentials.',
++        'Copy App Key + App Secret into Setup.',
++      ],
++    },
++    mailchimp: {
++      title: 'Mailchimp API keys',
++      url: 'https://admin.mailchimp.com/account/api/',
++      blurb: 'Optional newsletters.',
++      steps: [
++        'Sign in to Mailchimp.',
++        'Create an API key and copy it.',
++        'Copy your Audience / List ID.',
++        'Paste both into Setup → Email.',
++      ],
++    },
++    winks: {
++      title: 'Winks Design Studio',
++      url: '/shop/',
++      blurb: 'Build customs the same way shoppers do.',
++      steps: [
++        'Browse the studio tools.',
++        'Try a sample design so you know what customers see.',
++        'Close this guide when you are done.',
++      ],
++    },
++  };
++
++  let popupWin = null;
++
++  function el(html) {
++    const t = document.createElement('template');
++    t.innerHTML = html.trim();
++    return t.content.firstElementChild;
++  }
++
++  function ensureDom() {
++    if (document.getElementById('guide-browser')) return;
++    if (!document.getElementById('guide-browser-critical-css')) {
++      const style = document.createElement('style');
++      style.id = 'guide-browser-critical-css';
++      style.textContent = `
++        #guide-browser {
++          position: fixed; inset: 0; z-index: 14000; display: none;
++          background: rgba(0,0,0,0.62); padding: 12px;
++          align-items: stretch; justify-content: center;
++        }
++        #guide-browser.open { display: flex !important; }
++        #guide-browser .gb-shell {
++          width: min(1100px, 100%); max-height: calc(100vh - 24px);
++          background: #141418; border: 1px solid rgba(255,26,140,0.45);
++          border-radius: 18px; overflow: hidden; display: flex; flex-direction: column;
++          box-shadow: 0 24px 64px rgba(0,0,0,0.55);
++        }
++        #guide-browser .gb-top {
++          display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
++          padding: 12px 14px; background: linear-gradient(135deg,#1a0a12,#2a1020);
++          border-bottom: 1px solid rgba(255,26,140,0.28);
++        }
++        #guide-browser .gb-top img {
++          width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
++          border: 2px solid #FF1A8C; flex-shrink: 0;
++        }
++        #guide-browser .gb-title { flex: 1; min-width: 140px; }
++        #guide-browser .gb-title strong { display: block; color: #fff; font-size: 0.95rem; }
++        #guide-browser .gb-title span { color: rgba(255,255,255,0.7); font-size: 0.75rem; }
++        #guide-browser .gb-actions { display: flex; gap: 8px; flex-wrap: wrap; }
++        #guide-browser .gb-btn {
++          border: 1px solid rgba(255,26,140,0.5); background: rgba(255,26,140,0.18);
++          color: #fff; border-radius: 999px; padding: 8px 12px; font-size: 0.78rem;
++          font-weight: 700; cursor: pointer;
++        }
++        #guide-browser .gb-btn.ghost { background: transparent; border-color: rgba(255,255,255,0.25); }
++        #guide-browser .gb-body {
++          display: grid; grid-template-columns: minmax(240px, 320px) 1fr;
++          min-height: 0; flex: 1; background: #0f0f12;
++        }
++        #guide-browser .gb-steps {
++          padding: 14px; overflow-y: auto; border-right: 1px solid rgba(255,255,255,0.08);
++        }
++        #guide-browser .gb-steps h4 {
++          margin: 0 0 8px; color: #fff; font-size: 0.85rem;
++        }
++        #guide-browser .gb-steps p {
++          margin: 0 0 12px; color: rgba(255,255,255,0.72); font-size: 0.78rem; line-height: 1.45;
++        }
++        #guide-browser .gb-step {
++          display: flex; gap: 10px; align-items: flex-start;
++          padding: 10px 10px; margin-bottom: 8px; border-radius: 12px;
++          border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04);
++          cursor: pointer; color: #fff; font-size: 0.8rem; line-height: 1.4;
++        }
++        #guide-browser .gb-step.done {
++          border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.1);
++        }
++        #guide-browser .gb-step input { margin-top: 2px; accent-color: #FF1A8C; width: 16px; height: 16px; }
++        #guide-browser .gb-frame-wrap {
++          position: relative; min-height: 280px; background: #0a0a0c;
++        }
++        #guide-browser .gb-frame-wrap iframe {
++          position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff;
++        }
++        #guide-browser .gb-fallback {
++          position: absolute; inset: 0; display: flex; flex-direction: column;
++          align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center;
++          color: rgba(255,255,255,0.85); font-size: 0.88rem; line-height: 1.5;
++          background: radial-gradient(ellipse at top, rgba(255,26,140,0.12), transparent 55%), #0f0f12;
++        }
++        #guide-browser .gb-fallback strong { color: #fff; display: block; font-size: 1rem; margin-bottom: 4px; }
++        #guide-browser .gb-url {
++          font-size: 0.72rem; color: rgba(255,255,255,0.55); word-break: break-all;
++          max-width: 90%;
++        }
++        @media (max-width: 800px) {
++          #guide-browser .gb-body { grid-template-columns: 1fr; }
++          #guide-browser .gb-frame-wrap { min-height: 220px; }
++          #guide-browser .gb-steps { max-height: 42vh; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); }
++        }
++      `;
++      document.head.appendChild(style);
++    }
++
++    const root = el(`
++<div id="guide-browser" aria-hidden="true">
++  <div class="gb-shell" role="dialog" aria-modal="true" aria-label="Setup guide browser">
++    <div class="gb-top">
++      <img src="/assets/artist.jpg" alt="" onerror="this.outerHTML='<span style=&quot;font-size:1.4rem&quot;>👑</span>'"/>
++      <div class="gb-title">
++        <strong id="gb-title">Guide</strong>
++        <span id="gb-blurb">Follow the steps — I’ll stay with you.</span>
++      </div>
++      <div class="gb-actions">
++        <button type="button" class="gb-btn" id="gb-reopen">Open site again</button>
++        <button type="button" class="gb-btn ghost" id="gb-close">Done</button>
++      </div>
++    </div>
++    <div class="gb-body">
++      <div class="gb-steps">
++        <h4>Do this</h4>
++        <p id="gb-lead">Check each step as you finish it.</p>
++        <div id="gb-step-list"></div>
++      </div>
++      <div class="gb-frame-wrap">
++        <iframe id="gb-iframe" title="Guide preview" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"></iframe>
++        <div class="gb-fallback" id="gb-fallback">
++          <div>
++            <strong>Watch + follow along here</strong>
++            We opened the site in a new tab (most dashboards block in-page browsers).
++            Keep this checklist open and check off each step.
++          </div>
++          <div class="gb-url" id="gb-url"></div>
++          <button type="button" class="gb-btn" id="gb-fallback-open">Open the site</button>
++        </div>
++      </div>
++    </div>
++  </div>
++</div>`);
++    document.body.appendChild(root);
++
++    document.getElementById('gb-close').addEventListener('click', close);
++    document.getElementById('gb-reopen').addEventListener('click', () => {
++      const url = root.dataset.url;
++      if (url) openExternal(url);
++    });
++    document.getElementById('gb-fallback-open').addEventListener('click', () => {
++      const url = root.dataset.url;
++      if (url) openExternal(url);
++    });
++    root.addEventListener('click', (e) => {
++      if (e.target === root) close();
++    });
++    document.addEventListener('keydown', (e) => {
++      if (e.key === 'Escape' && root.classList.contains('open')) close();
++    });
++  }
++
++  function openExternal(url) {
++    try {
++      if (popupWin && !popupWin.closed) {
++        popupWin.location.href = url;
++        popupWin.focus();
++        return popupWin;
++      }
++    } catch (_) { /* ignore */ }
++    popupWin = window.open(url, 'qcc_guide_browser', 'noopener,noreferrer');
++    return popupWin;
++  }
++
++  function close() {
++    const root = document.getElementById('guide-browser');
++    if (!root) return;
++    root.classList.remove('open');
++    root.setAttribute('aria-hidden', 'true');
++    const iframe = document.getElementById('gb-iframe');
++    if (iframe) iframe.removeAttribute('src');
++  }
++
++  function open(guideId, opts) {
++    opts = opts || {};
++    ensureDom();
++    const guide = GUIDES[guideId] || {
++      title: opts.title || 'Guide',
++      url: opts.url || guideId,
++      blurb: opts.blurb || 'Follow the steps on the left.',
++      steps: opts.steps || ['Open the site', 'Copy what you need', 'Paste it back into Setup', 'Save'],
++    };
++    const root = document.getElementById('guide-browser');
++    const url = guide.url;
++    root.dataset.url = url;
++    document.getElementById('gb-title').textContent = guide.title;
++    document.getElementById('gb-blurb').textContent = guide.blurb;
++    document.getElementById('gb-lead').textContent = 'Check each box as you finish — then paste into Setup.';
++    document.getElementById('gb-url').textContent = url;
++
++    const list = document.getElementById('gb-step-list');
++    list.innerHTML = '';
++    (guide.steps || []).forEach((text, i) => {
++      const row = document.createElement('label');
++      row.className = 'gb-step';
++      row.innerHTML = '<input type="checkbox"/> <span><strong>' + (i + 1) + '.</strong> ' + text + '</span>';
++      const box = row.querySelector('input');
++      box.addEventListener('change', () => {
++        row.classList.toggle('done', box.checked);
++      });
++      list.appendChild(row);
++    });
++
++    const iframe = document.getElementById('gb-iframe');
++    const fallback = document.getElementById('gb-fallback');
++    // Local paths can embed; external dashboards usually cannot.
++    const canEmbed = url.startsWith('/') || url.indexOf(location.host) !== -1;
++    if (canEmbed) {
++      fallback.style.display = 'none';
++      iframe.style.display = 'block';
++      iframe.src = url;
++    } else {
++      iframe.style.display = 'none';
++      iframe.removeAttribute('src');
++      fallback.style.display = 'flex';
++      openExternal(url);
++    }
++
++    root.classList.add('open');
++    root.setAttribute('aria-hidden', 'false');
++  }
++
++  window.QCCGuideBrowser = {
++    open: open,
++    close: close,
++    guides: GUIDES,
++  };
++})();
+diff --git a/admin/index.html b/admin/index.html
+index 3828cc1..798b1d2 100644
+--- a/admin/index.html
++++ b/admin/index.html
+@@ -52,7 +52,8 @@
+     .login-error { color: var(--red); font-size: 0.82rem; margin-top: 10px; min-height: 18px; }
+ 
+     /* Sidebar */
+-    .sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; transition: transform 0.3s; }
++    .sidebar { width: 240px; background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: fixed; left: 0; top: 0; bottom: 0; z-index: 200; transition: transform 0.3s; }
++    a.nav-item { color: inherit; }
+     .sidebar-brand { padding: 24px 20px 20px; border-bottom: 1px solid var(--border); }
+     .sidebar-brand .crown { font-size: 24px; margin-bottom: 6px; display: block; }
+     .sidebar-brand h1 { font-family: var(--font-display); font-size: 1.05rem; line-height: 1.2; }
+@@ -184,11 +185,6 @@
+       background: var(--pink); color: #fff; font-family: var(--font-display); font-weight: 600; font-size: 0.82rem;
+     }
+     .coach-form button:disabled { opacity: 0.55; cursor: wait; }
+-    .coach-status-pill {
+-      display: inline-flex; align-items: center; gap: 6px; font-size: 0.7rem; font-weight: 600;
+-      padding: 3px 8px; border-radius: 999px; background: rgba(245,158,11,0.12); color: var(--amber);
+-    }
+-    .coach-status-pill.on { background: rgba(34,197,94,0.12); color: var(--green); }
+     .integration-grid { display: grid; gap: 20px; }
+     .integration-block { padding: 20px; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+     .integration-block h4 { font-family: var(--font-display); font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+@@ -223,6 +219,62 @@
+     .howto ol { margin: 0; padding-left: 1.2rem; color: var(--text-2); font-size: 0.82rem; line-height: 1.55; }
+     .howto ol li { margin-bottom: 6px; }
+     .howto a { color: var(--pink); text-decoration: underline; }
++    .plain-blurb { font-size: 0.82rem; color: var(--text-2); line-height: 1.5; margin: 0 0 12px; }
++    .btn-open-site, .btn-show-guide {
++      display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px;
++      border: 1px solid var(--pink); background: rgba(255,26,140,0.16); color: #fff;
++      font-family: var(--font-display); font-size: 0.78rem; font-weight: 600; cursor: pointer;
++      text-decoration: none; margin: 0 8px 12px 0;
++    }
++    .btn-open-site:hover, .btn-show-guide:hover { background: rgba(255,26,140,0.28); }
++    .btn-show-guide { background: #FF1A8C; border-color: #FF1A8C; }
++    .btn-show-guide:hover { background: #e0157c; }
++    .link-row { display: flex; flex-wrap: wrap; gap: 0; align-items: center; margin-bottom: 4px; }
++    .topbar-right { display: flex; align-items: center; gap: 12px; }
++    .topbar-queen {
++      display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px;
++      border-radius: 999px; border: 1px solid rgba(255,26,140,0.5);
++      background: rgba(255,26,140,0.14); color: #fff; cursor: pointer;
++      font-family: var(--font-display); font-size: 0.78rem; font-weight: 700;
++    }
++    .topbar-queen img {
++      width: 28px; height: 28px; border-radius: 50%; object-fit: cover; object-position: center top;
++      border: 2px solid var(--pink);
++    }
++    .ops-hero {
++      margin-bottom: 18px; padding: 18px 20px; border-radius: var(--radius);
++      background: linear-gradient(135deg, rgba(255,26,140,0.16), rgba(26,10,18,0.9));
++      border: 1px solid rgba(255,26,140,0.35);
++    }
++    .ops-hero h2 { font-family: var(--font-display); font-size: 1.25rem; margin: 0 0 6px; }
++    .ops-hero p { margin: 0; color: var(--text-2); font-size: 0.88rem; line-height: 1.5; }
++    .ops-quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
++    .ops-quick-btn {
++      border: 1px solid rgba(255,26,140,0.45); background: rgba(255,26,140,0.14); color: #fff;
++      border-radius: 999px; padding: 10px 14px; font-size: 0.8rem; font-weight: 700; cursor: pointer;
++      font-family: var(--font-display);
++    }
++    .ops-quick-btn:hover { background: rgba(255,26,140,0.28); }
++    button.stat-card, .clickable-stat {
++      text-align: left; width: 100%; cursor: pointer; font: inherit; color: inherit;
++      transition: transform 0.15s ease, border-color 0.15s ease;
++    }
++    button.stat-card:hover, .clickable-stat:hover { transform: translateY(-2px); border-color: var(--pink); }
++    .setup-step-jump {
++      display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px;
++    }
++    .setup-step-jump button {
++      border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
++      border-radius: 999px; padding: 6px 10px; font-size: 0.72rem; font-weight: 600; cursor: pointer;
++    }
++    .setup-step-jump button.current { border-color: var(--pink); color: #fff; background: rgba(255,26,140,0.18); }
++    .setup-step-jump button.done { color: var(--green); border-color: rgba(34,197,94,0.35); }
++    .btn-ask-coach {
++      display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px;
++      border: 1px solid var(--border); background: transparent; color: var(--text-2);
++      font-size: 0.75rem; font-weight: 600; cursor: pointer; margin: 0 8px 12px 0;
++    }
++    .btn-ask-coach:hover { border-color: var(--pink); color: #fff; }
+     .status-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
+     .status-list li {
+       display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-2);
+@@ -251,10 +303,94 @@
+     #toast.success { border-color: var(--green); color: var(--green); }
+     #toast.error { border-color: var(--red); color: var(--red); }
+ 
++    /* Admin Queen finder — always visible after login (Ops + Setup) */
++    body:not(.authed) .aq-nav { display: none !important; }
++    .aq-nav {
++      position: fixed !important; bottom: 24px !important; left: 18px !important;
++      z-index: 12050 !important; font-family: var(--font-body); pointer-events: none !important;
++    }
++    .aq-nav .aq-fab, .aq-nav .aq-panel, .aq-nav .aq-tip { pointer-events: auto !important; }
++    .aq-fab {
++      width: 64px !important; height: 64px !important; border-radius: 50% !important; border: 3px solid var(--pink) !important;
++      background: #1a0a12 !important; padding: 0 !important; cursor: pointer !important; position: relative !important;
++      box-shadow: 0 8px 28px rgba(255,26,140,0.55), 0 0 0 4px rgba(255,26,140,0.2) !important;
++      overflow: hidden !important; display: grid !important; place-items: center !important; color: #fff !important; font-size: 1.6rem !important;
++    }
++    .aq-fab img { width: 100% !important; height: 100% !important; object-fit: cover !important; object-position: center top !important; border-radius: 50% !important; display: block !important; }
++    .aq-fab-pulse {
++      position: absolute; inset: -5px; border-radius: 50%; border: 2px solid rgba(255,26,140,0.55);
++      animation: aq-pulse 2.2s ease-out infinite; pointer-events: none;
++    }
++    @keyframes aq-pulse {
++      0% { transform: scale(0.95); opacity: 0.75; }
++      100% { transform: scale(1.35); opacity: 0; }
++    }
++    .aq-tip {
++      position: absolute; left: 72px; bottom: 16px; white-space: nowrap;
++      background: var(--surface-2); border: 1px solid rgba(255,26,140,0.45); color: #fff;
++      font-size: 0.78rem; font-weight: 600; padding: 8px 12px; border-radius: 999px;
++      opacity: 0; pointer-events: none; transition: opacity 0.25s;
++      box-shadow: 0 6px 20px rgba(0,0,0,0.4);
++    }
++    .aq-nav:not(.open) .aq-tip.show { opacity: 1; }
++    .aq-panel {
++      position: absolute !important; bottom: 78px !important; left: 0 !important;
++      width: min(340px, calc(100vw - 28px)) !important;
++      background: #141418 !important; border: 1px solid rgba(255,26,140,0.4) !important; border-radius: 16px !important;
++      box-shadow: 0 16px 48px rgba(0,0,0,0.55) !important; overflow: hidden !important;
++      transform: translateY(12px); opacity: 0; pointer-events: none; transition: all 0.2s;
++      display: flex !important; flex-direction: column !important;
++      height: min(420px, calc(100vh - 160px)) !important;
++      max-height: min(420px, calc(100vh - 160px)) !important;
++    }
++    .aq-nav.open .aq-panel { transform: translateY(0); opacity: 1; pointer-events: auto !important; }
++    .aq-header {
++      display: flex; align-items: center; gap: 10px; padding: 12px 14px;
++      border-bottom: 1px solid var(--border); background: linear-gradient(135deg, #1a0a12, #2a1020);
++    }
++    .aq-header img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; object-position: center top; border: 2px solid var(--pink); }
++    .aq-header-text { flex: 1; min-width: 0; }
++    .aq-header-text strong { display: block; font-family: var(--font-display); font-size: 0.92rem; }
++    .aq-header-text span { font-size: 0.72rem; color: var(--text-3); }
++    .aq-close { background: none; border: none; color: var(--text-2); font-size: 1.4rem; cursor: pointer; line-height: 1; }
++    .aq-messages { padding: 12px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 140px; }
++    .aq-bubble { font-size: 0.8rem; line-height: 1.5; padding: 9px 11px; border-radius: 12px; max-width: 95%; }
++    .aq-bubble.queen { align-self: flex-start; background: var(--pink-dim); border: 1px solid rgba(255,26,140,0.28); }
++    .aq-bubble.user { align-self: flex-end; background: var(--surface-2); border: 1px solid var(--border); }
++    .aq-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px; }
++    .aq-chip {
++      border: 1px solid rgba(255,26,140,0.4); background: rgba(255,26,140,0.1); color: #fff;
++      font-size: 0.7rem; font-weight: 600; padding: 5px 10px; border-radius: 999px; cursor: pointer;
++    }
++    .aq-form { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--border); }
++    .aq-form input {
++      flex: 1; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--border);
++      background: var(--bg); color: var(--text); font-size: 0.82rem;
++    }
++    .aq-send {
++      border: none; background: var(--pink); color: #fff; border-radius: 10px;
++      padding: 0 14px; font-weight: 700; font-family: var(--font-display); font-size: 0.78rem; cursor: pointer;
++    }
++    .aq-hits { display: grid; gap: 6px; }
++    .aq-hit {
++      text-align: left; border: 1px solid var(--border); background: var(--surface-2);
++      border-radius: 10px; padding: 10px 12px; cursor: pointer; color: var(--text);
++    }
++    .aq-hit:hover { border-color: var(--pink); background: rgba(255,26,140,0.1); }
++    .aq-hit strong { display: block; font-size: 0.8rem; font-family: var(--font-display); margin-bottom: 2px; }
++    .aq-hit span { display: block; font-size: 0.72rem; color: var(--text-2); line-height: 1.4; }
++    .coach-log:empty::before {
++      content: "Chat with the coach below — or tap the pink Queen avatar (bottom-left) to find any page.";
++      display: block; color: var(--text-3); font-size: 0.78rem; line-height: 1.45; padding: 4px 2px;
++    }
++
+     /* Mobile */
+     .ham { display: none; background: none; border: none; color: var(--text); cursor: pointer; padding: 4px; }
+-    .mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; }
++    .mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 190; display: none; }
+     .mob-overlay.show { display: block; }
++    @media (max-width: 768px) {
++      .sidebar.open { z-index: 220; box-shadow: 8px 0 28px rgba(0,0,0,0.5); }
++    }
+     @media (max-width: 900px) {
+       .wizard-layout { grid-template-columns: 1fr; }
+       .ai-panel { order: -1; }
+@@ -269,6 +405,19 @@
+       thead th:nth-child(3), tbody td:nth-child(3),
+       thead th:nth-child(5), tbody td:nth-child(5) { display: none; }
+       .step-labels { display: none; }
++      /* Sit above iOS Safari chrome */
++      .aq-nav { bottom: max(88px, env(safe-area-inset-bottom, 0px) + 72px) !important; left: 12px !important; }
++      .aq-tip { display: none !important; }
++      .aq-panel {
++        width: min(320px, calc(100vw - 24px)) !important;
++        height: min(48vh, 360px) !important;
++        max-height: min(48vh, 360px) !important;
++        bottom: 76px !important;
++      }
++      .aq-fab { width: 58px !important; height: 58px !important; }
++      .topbar-queen span { display: none; }
++      .topbar-queen { padding: 4px; }
++      .ops-hero { padding: 14px 16px; }
+     }
+ </style>
+ </head>
+@@ -303,6 +452,11 @@
+     <button class="nav-item" data-page="inquiries"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Inquiries</button>
+     <button class="nav-item" data-page="products"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Products</button>
+     <button class="nav-item" data-page="admin-users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Admin Users</button>
++    <div class="nav-section">Studio</div>
++    <a class="nav-item" id="nav-winks-studio" href="/shop/" target="_blank" rel="noopener" style="text-decoration:none">
++      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3 7h7l-5.5 4 2 7L12 16l-6.5 4 2-7L2 9h7z"/></svg>
++      Winks Design Studio
++    </a>
+   </nav>
+   <div class="sidebar-footer"><button class="logout-btn" id="logout-btn">Sign Out</button></div>
+ </aside>
+@@ -317,18 +471,45 @@
+       <button type="button" class="mode-btn active" data-mode="operations">Operations</button>
+       <button type="button" class="mode-btn" data-mode="setup">Setup</button>
+     </div>
+-    <div class="topbar-user">Signed in as <strong id="admin-name">Admin</strong></div>
++    <div class="topbar-right">
++      <button type="button" class="topbar-queen" id="topbar-queen" title="Ask Admin Queen">
++        <img src="/assets/artist.jpg" alt="" onerror="this.outerHTML='<span>👑</span>'"/>
++        <span>Ask Queen</span>
++      </button>
++      <div class="topbar-user">Signed in as <strong id="admin-name">Admin</strong></div>
++    </div>
+   </div>
+ 
+   <div class="content" id="ops-content">
+     <div class="page active" id="page-dashboard">
++      <div class="ops-hero" id="ops-hero">
++        <div class="ops-hero-text">
++          <h2>Welcome back, Queen 👑</h2>
++          <p>Tap a pink button — I’ll take you there. Need Setup links? Switch to <strong>Setup</strong> up top, or ask the avatar (bottom-left / Ask Queen).</p>
++        </div>
++        <div class="ops-quick" id="ops-quick">
++          <button type="button" class="ops-quick-btn" data-jump="orders" data-filter="pending">① Pending orders</button>
++          <button type="button" class="ops-quick-btn" data-jump="inquiries">② New messages</button>
++          <button type="button" class="ops-quick-btn" data-jump-mode="setup">③ Finish Setup</button>
++          <button type="button" class="ops-quick-btn" data-guide="winks">④ Winks Studio</button>
++        </div>
++      </div>
+       <div class="stats-grid">
+-        <div class="stat-card pink"><div class="stat-label">Revenue</div><div class="stat-val" id="stat-revenue">$0</div><div class="stat-sub">Paid orders</div></div>
+-        <div class="stat-card"><div class="stat-label">Orders</div><div class="stat-val" id="stat-orders">0</div><div class="stat-sub">All time</div></div>
+-        <div class="stat-card amber"><div class="stat-label">Pending</div><div class="stat-val" id="stat-pending">0</div><div class="stat-sub">Need action</div></div>
+-        <div class="stat-card green"><div class="stat-label">Customers</div><div class="stat-val" id="stat-customers">0</div><div class="stat-sub">Registered</div></div>
+-        <div class="stat-card pink"><div class="stat-label">New Inquiries</div><div class="stat-val" id="stat-inquiries">0</div><div class="stat-sub">Unread</div></div>
+-        <div class="stat-card"><div class="stat-label">Products</div><div class="stat-val" id="stat-products">0</div><div class="stat-sub">Active</div></div>
++        <button type="button" class="stat-card pink clickable-stat" data-jump="orders"><div class="stat-label">Revenue</div><div class="stat-val" id="stat-revenue">$0</div><div class="stat-sub">Paid orders · tap to open</div></button>
++        <button type="button" class="stat-card clickable-stat" data-jump="orders"><div class="stat-label">Orders</div><div class="stat-val" id="stat-orders">0</div><div class="stat-sub">All time · tap to open</div></button>
++        <button type="button" class="stat-card amber clickable-stat" data-jump="orders" data-filter="pending"><div class="stat-label">Pending</div><div class="stat-val" id="stat-pending">0</div><div class="stat-sub">Need action · tap</div></button>
++        <button type="button" class="stat-card green clickable-stat" data-jump="customers"><div class="stat-label">Customers</div><div class="stat-val" id="stat-customers">0</div><div class="stat-sub">Registered · tap</div></button>
++        <button type="button" class="stat-card pink clickable-stat" data-jump="inquiries"><div class="stat-label">New Inquiries</div><div class="stat-val" id="stat-inquiries">0</div><div class="stat-sub">Unread · tap</div></button>
++        <button type="button" class="stat-card clickable-stat" data-jump="products"><div class="stat-label">Products</div><div class="stat-val" id="stat-products">0</div><div class="stat-sub">Active · tap</div></button>
++      </div>
++      <div class="card" style="margin-bottom:16px">
++        <div class="card-header">
++          <span class="card-title">Winks Design Studio</span>
++          <button type="button" class="filter-tab active" data-guide="winks">Show me →</button>
++        </div>
++        <p style="font-size:0.88rem;color:var(--text-2);line-height:1.5;padding:4px 0 8px">
++          Build custom tumblers with the same studio shoppers use. Tap <strong>Show me</strong> for an in-admin guide (opens the studio with a checklist).
++        </p>
+       </div>
+       <div class="card">
+         <div class="card-header"><span class="card-title">Recent Orders</span><button type="button" class="filter-tab active" id="dash-view-orders">View All →</button></div>
+@@ -400,14 +581,13 @@
+     <div class="setup-wrap">
+       <div class="progress-bar" id="wizard-progress"></div>
+       <div class="step-labels" id="wizard-step-labels"></div>
++      <div class="setup-step-jump" id="setup-step-jump" aria-label="Jump to setup step"></div>
+       <div class="wizard-layout">
+         <div class="wizard-main" id="wizard-main"></div>
+         <div class="ai-panel">
+           <div class="ai-panel-header"><span>👑</span><h3>Setup Coach</h3></div>
+           <div class="ai-tip" id="ai-tip"></div>
+-          <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+-            <span id="coach-llm-status" class="coach-status-pill">Coach loading…</span>
+-          </div>
++          <p class="plain-blurb" style="margin-top:8px">Free guided tips — ask anything in plain English. Tap <strong>Show me</strong> buttons on the left for live walkthroughs.</p>
+           <div class="coach-log" id="coach-log" aria-live="polite"></div>
+           <form class="coach-form" id="coach-form">
+             <textarea id="coach-input" placeholder="Ask anything — e.g. explain Shop ID like I’m five" maxlength="2000"></textarea>
+@@ -501,6 +681,8 @@
+ 
+ <div id="toast"></div>
+ 
++<script src="guide-browser.js?v=1"></script>
++<script src="queen-nav.js?v=4"></script>
+ <script>(function () {
+   'use strict';
+ 
+@@ -508,14 +690,14 @@
+   const ORDER_STATUSES = ['pending','confirmed','in_progress','shipped','delivered','cancelled'];
+   const WIZARD_STEPS = ['Welcome','E-Commerce','Payments','Logins','Email','Products','Admins','Complete'];
+   const AI_TIPS = [
+-    'Everything happens in this Setup screen. Open the links we give you, copy your keys, paste them here, then tap Save — the shop updates by itself.',
+-    'Optional for later: Etsy / Amazon / TikTok. You can skip this step and come back anytime from the Setup toggle.',
+-    'For Stripe: paste your Connect Client ID + Secret Key, then Save. We’ll open Stripe automatically so you can approve the connection. PayPal is paste-and-Save only.',
+-    'Want shoppers to use Google / Apple / Facebook? Create those apps in your own developer accounts, paste the keys, turn Enable ON, then Save — buttons appear on the shop login right away.',
+-    'Email is optional. Paste your Mailchimp / Klaviyo / SendGrid key and Save when you’re ready for newsletters.',
++    'Everything happens here. Tap pink Show me buttons — I open the site + a checklist. Copy, paste, Save.',
++    'Etsy / Amazon / TikTok are optional. Tap Show me for a guided checklist, or leave blank and Continue.',
++    'Tap Show me Stripe keys, copy pk_ and sk_, paste, Save. PayPal has its own Show me if you want it.',
++    'Google is easiest: Show me Google, add the redirect URI we show, paste keys, Enable ON, Save.',
++    'Email is optional. Show me Mailchimp if you want newsletters — or Continue to skip.',
+     'Adjust prices or inventory if you want — Save on each row. Or Continue to skip.',
+     'You can add another admin later. Continue when you’re ready.',
+-    'Setup is finished. Operations is your daily dashboard for orders and messages. You can reopen Setup anytime to change keys.'
++    'Setup is finished. Operations is your daily dashboard. Reopen Setup anytime to change keys.'
+   ];
+   const STEP_INDEX = { welcome: 0, ecommerce: 1, payments: 2, logins: 3, email: 4, products: 5, admins: 6, complete: 7 };
+ 
+@@ -623,6 +805,7 @@
+     hide($('login-screen'));
+     show($('main-app'));
+     document.body.classList.add('authed');
++    initAdminQueenNav();
+     if (consumeSetupQuery()) return;
+     try {
+       await loadIntegrations();
+@@ -665,6 +848,9 @@
+   });
+ 
+   // ── Mode toggle ─────────────────────────────────────────────
++  let pendingWizardStep = null;
++  let coachGreeted = false;
++
+   function setMode(mode) {
+     currentMode = mode;
+     document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
+@@ -675,6 +861,11 @@
+       show($('setup-content'));
+       sidebar.classList.add('hidden');
+       main.classList.add('setup-mode');
++      if ($('page-title')) $('page-title').textContent = 'Setup Wizard';
++      if (typeof pendingWizardStep === 'number') {
++        wizardStep = pendingWizardStep;
++        pendingWizardStep = null;
++      }
+       loadIntegrations().then(() => renderWizard()).catch(() => renderWizard());
+     } else {
+       show($('ops-content'));
+@@ -686,10 +877,120 @@
+     closeSidebar();
+   }
+ 
++  /** Jump from Admin Queen finder (Operations pages or Setup steps). */
++  function navigateAdminTarget(target) {
++    target = target || {};
++    if (target.mode === 'setup' || typeof target.step === 'number') {
++      if (typeof target.step === 'number') pendingWizardStep = target.step;
++      setMode('setup');
++      // Seed a coach tip when landing on a setup destination
++      setTimeout(() => {
++        if (target.ask) askSetupCoachMessage(target.ask);
++        else if (!coachGreeted) ensureCoachGreeting();
++      }, 400);
++      return;
++    }
++    setMode('operations');
++    if (target.page) showPage(target.page);
++  }
++
++  async function askSetupCoachMessage(message) {
++    const msg = (message || '').trim();
++    if (!msg) return;
++    ensureCoachGreeting();
++    appendCoachBubble(msg, 'you');
++    try {
++      const res = await api('/api/admin/setup-coach', {
++        method: 'POST',
++        body: { message: msg, step: wizardStep, context: { source: 'admin-queen' } },
++      });
++      appendCoachBubble(res.reply || 'No reply', '');
++    } catch (err) {
++      appendCoachBubble(err.message || 'Coach failed', 'meta');
++    }
++  }
++
++  function ensureCoachGreeting() {
++    const log = $('coach-log');
++    if (!log || coachGreeted || log.children.length) return;
++    coachGreeted = true;
++    appendCoachBubble(
++      'Hey Queen 👑 I’m your Setup Coach. Ask me anything in plain English — or tap the pink avatar (bottom-left) anytime to find Orders, Stripe, Inquiries, and more.',
++      ''
++    );
++  }
++
++  function initAdminQueenNav() {
++    if (!window.QCCAdminQueen || typeof window.QCCAdminQueen.init !== 'function') return;
++    window.QCCAdminQueen.init({
++      navigate: navigateAdminTarget,
++      askSetupCoach: function (q) {
++        if (currentMode !== 'setup') setMode('setup');
++        setTimeout(() => askSetupCoachMessage(q), 500);
++      },
++    });
++  }
++
++  function openGuide(id) {
++    if (window.QCCGuideBrowser && typeof window.QCCGuideBrowser.open === 'function') {
++      window.QCCGuideBrowser.open(id);
++      return;
++    }
++    toast('Guide browser loading…', 'error');
++  }
++
++  function wireGuideButtons(root) {
++    (root || document).querySelectorAll('[data-guide]').forEach((btn) => {
++      if (btn.dataset.guideBound) return;
++      btn.dataset.guideBound = '1';
++      btn.addEventListener('click', (e) => {
++        e.preventDefault();
++        openGuide(btn.getAttribute('data-guide'));
++      });
++    });
++  }
++
++  function jumpOps(page, filter) {
++    setMode('operations');
++    if (filter && page === 'orders') {
++      currentOrderFilter = filter;
++      document.querySelectorAll('#order-filters .filter-tab').forEach((t) => {
++        t.classList.toggle('active', t.dataset.status === filter);
++      });
++    }
++    showPage(page || 'dashboard');
++  }
++
+   document.querySelectorAll('.mode-btn').forEach(btn => {
+     btn.addEventListener('click', () => setMode(btn.dataset.mode));
+   });
+ 
++  $('topbar-queen') && $('topbar-queen').addEventListener('click', () => {
++    if (window.QCCAdminQueen && typeof window.QCCAdminQueen.open === 'function') {
++      window.QCCAdminQueen.open();
++    } else {
++      initAdminQueenNav();
++      setTimeout(() => window.QCCAdminQueen && window.QCCAdminQueen.open && window.QCCAdminQueen.open(), 50);
++    }
++  });
++
++  document.addEventListener('click', (e) => {
++    const jump = e.target.closest('[data-jump]');
++    if (jump) {
++      jumpOps(jump.getAttribute('data-jump'), jump.getAttribute('data-filter') || null);
++      return;
++    }
++    const modeBtn = e.target.closest('[data-jump-mode]');
++    if (modeBtn) {
++      setMode(modeBtn.getAttribute('data-jump-mode'));
++      return;
++    }
++    const guideBtn = e.target.closest('[data-guide]');
++    if (guideBtn && !guideBtn.dataset.guideBound) {
++      openGuide(guideBtn.getAttribute('data-guide'));
++    }
++  });
++
+   // ── Navigation ────────────────────────────────────────────────
+   const PAGE_TITLES = { dashboard:'Dashboard', orders:'Orders', customers:'Customers', inquiries:'Inquiries', products:'Products', 'admin-users':'Admin Users' };
+ 
+@@ -979,27 +1280,22 @@
+     bar.innerHTML = WIZARD_STEPS.map((_, i) => '<div class="progress-step' + (i < wizardStep ? ' done' : '') + (i === wizardStep ? ' current' : '') + '"></div>').join('');
+     labels.innerHTML = WIZARD_STEPS.map((s, i) => '<span>' + s + '</span>').join('');
+     $('ai-tip').textContent = AI_TIPS[wizardStep] || '';
++    const jump = $('setup-step-jump');
++    if (jump) {
++      jump.innerHTML = WIZARD_STEPS.map((label, i) => {
++        const cls = i === wizardStep ? 'current' : (i < wizardStep ? 'done' : '');
++        return '<button type="button" class="' + cls + '" data-wiz-jump="' + i + '">' + (i < wizardStep ? '✓ ' : (i + 1) + '. ') + label + '</button>';
++      }).join('');
++      jump.querySelectorAll('[data-wiz-jump]').forEach((btn) => {
++        btn.addEventListener('click', () => {
++          wizardStep = parseInt(btn.getAttribute('data-wiz-jump'), 10) || 0;
++          renderWizard();
++        });
++      });
++    }
+     const side = $('setup-status-panel');
+     if (side) side.innerHTML = '<p style="font-size:0.75rem;color:var(--text-3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em">Live on your shop</p>' + statusChecklistHtml();
+-    refreshCoachStatus();
+-  }
+-
+-  async function refreshCoachStatus() {
+-    const el = $('coach-llm-status');
+-    if (!el || !token) return;
+-    try {
+-      const st = await api('/api/admin/setup-coach/status');
+-      if (st.configured) {
+-        el.className = 'coach-status-pill on';
+-        el.textContent = 'LLM ready · ' + (st.model || 'gpt-4o-mini');
+-      } else {
+-        el.className = 'coach-status-pill';
+-        el.textContent = 'Guided tips only (add SETUP_COACH_API_KEY on server)';
+-      }
+-    } catch {
+-      el.className = 'coach-status-pill';
+-      el.textContent = 'Coach status unavailable';
+-    }
++    ensureCoachGreeting();
+   }
+ 
+   function appendCoachBubble(text, who) {
+@@ -1078,24 +1374,65 @@
+ 
+     if (wizardStep === 0) {
+       html = '<h2>Welcome, Queen! 👑</h2>' +
+-        '<p class="lead">This Setup guide runs entirely in your browser. You’ll open Stripe / Google (etc.) in a new tab, copy your keys, paste them here, and tap <strong>Save</strong>. When you Save, we activate the connection automatically — no terminal, no code, no tech person required.</p>' +
++        '<p class="lead">I’ll walk you through Setup with pink <strong>Show me</strong> buttons. Each one opens a checklist + the website you need (in a guide window). Copy → paste → <strong>Save</strong>. No terminal, no code.</p>' +
+         '<div class="howto"><h3>How every step works</h3><ol>' +
+-        '<li>We tell you which website to open (Stripe, Google, PayPal…).</li>' +
+-        '<li>You copy the key from <em>your</em> account (never someone else’s).</li>' +
+-        '<li>Paste it in the boxes on this page.</li>' +
+-        '<li>Tap <strong>Save &amp; Continue</strong> — we store it and turn it on for queenscustoms.shop.</li>' +
+-        '<li>For Stripe Connect, Save also opens Stripe so you can click Approve.</li>' +
++        '<li>Tap <strong>Show me</strong> — I open the right site and a checklist.</li>' +
++        '<li>Check off each box as you finish it.</li>' +
++        '<li>Paste keys into the boxes on this page.</li>' +
++        '<li>Tap <strong>Save &amp; Continue</strong> — we turn it on for queenscustoms.shop.</li>' +
++        '<li>Stuck? Tap <strong>Ask Queen</strong> (top) or the pink avatar (bottom-left).</li>' +
+         '</ol></div>' +
++        '<div class="howto"><h3>Links you’ll use (tap Show me anytime)</h3>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="stripe_keys">Show me Stripe keys</button>' +
++        '<button type="button" class="btn-show-guide" data-guide="paypal">Show me PayPal</button>' +
++        '<button type="button" class="btn-show-guide" data-guide="google">Show me Google login</button>' +
++        '<button type="button" class="btn-show-guide" data-guide="mailchimp">Show me Mailchimp</button>' +
++        '<button type="button" class="btn-show-guide" data-guide="winks">Show me Winks Studio</button>' +
++        '</div></div>' +
+         statusChecklistHtml() +
+         '<div class="wizard-nav"><span></span><button type="button" class="btn-pink" id="wiz-next">Start Setup →</button></div>';
+     } else if (wizardStep === 1) {
+       const e = integrations.etsy || {};
+       const a = integrations.amazon || {};
+       const t = integrations.tiktokShop || {};
+-      html = '<h2>E-Commerce Integrations</h2><p class="lead">Connect your marketplace accounts to sync orders and inventory.</p><div class="integration-grid">' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (e.connected ? ' on' : '') + '"></span> Etsy</h4>' + field('API Key', 'wiz-etsy-key', e.apiKey) + field('Shop ID', 'wiz-etsy-shop', e.shopId) + '</div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (a.connected ? ' on' : '') + '"></span> Amazon</h4>' + field('Seller ID', 'wiz-amz-seller', a.sellerId) + field('MWS Token', 'wiz-amz-token', a.mwsToken) + '</div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (t.connected ? ' on' : '') + '"></span> TikTok Shop</h4>' + field('App Key', 'wiz-tiktok-key', t.appKey) + field('App Secret', 'wiz-tiktok-secret', t.appSecret) + '</div>' +
++      html = '<h2>E-Commerce Integrations</h2>' +
++        '<p class="lead"><strong>Optional.</strong> Only fill these if you already sell on Etsy, Amazon, or TikTok Shop. An “API key” is just a secret password that site gives you — copy it, paste it here, Save. You can leave everything empty and Continue.</p>' +
++        '<div class="howto"><h3>Don’t know what these are?</h3><ol>' +
++        '<li>Tap <strong>Open …</strong> under the shop you use — a new tab opens.</li>' +
++        '<li>Sign in with <em>your</em> seller account.</li>' +
++        '<li>Copy the code they show → paste in the boxes below.</li>' +
++        '<li>Or skip: leave blank → <strong>Save &amp; Continue</strong>.</li>' +
++        '<li>Stuck? Type a question in Setup Coach (right / above) like “What is Shop ID?”</li>' +
++        '</ol></div>' +
++        '<div class="integration-grid">' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (e.connected ? ' on' : '') + '"></span> Etsy</h4>' +
++        '<p class="plain-blurb"><strong>API Key</strong> = secret from Etsy Developers. <strong>Shop ID</strong> = your shop’s number (not your password).</p>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="etsy">Show me Etsy</button>' +
++        '<a class="btn-open-site" href="https://www.etsy.com/developers/your-apps" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Where do I find my Etsy API Key and Shop ID? Explain simply.">Ask Coach</button>' +
++        '</div>' +
++        field('API Key', 'wiz-etsy-key', e.apiKey) + field('Shop ID', 'wiz-etsy-shop', e.shopId) +
++        '</div>' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (a.connected ? ' on' : '') + '"></span> Amazon</h4>' +
++        '<p class="plain-blurb">Only if you sell on Amazon. <strong>Seller ID</strong> is in Seller Central → Settings. Skip if you don’t have Amazon.</p>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="amazon">Show me Amazon</button>' +
++        '<a class="btn-open-site" href="https://sellercentral.amazon.com/" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="I don’t sell on Amazon — can I skip? What is an MWS token?">Ask Coach</button>' +
++        '</div>' +
++        field('Seller ID', 'wiz-amz-seller', a.sellerId) + field('MWS Token', 'wiz-amz-token', a.mwsToken) +
++        '</div>' +
++        '<div class="integration-block"><h4><span class="connected-dot' + (t.connected ? ' on' : '') + '"></span> TikTok Shop</h4>' +
++        '<p class="plain-blurb"><strong>App Key</strong> + <strong>App Secret</strong> are two passwords from TikTok Shop Partner Center. Skip if you’re not on TikTok Shop.</p>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="tiktok">Show me TikTok</button>' +
++        '<a class="btn-open-site" href="https://partner.tiktokshop.com/" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="How do I get TikTok Shop App Key and App Secret? Can I skip?">Ask Coach</button>' +
++        '</div>' +
++        field('App Key', 'wiz-tiktok-key', t.appKey) + field('App Secret', 'wiz-tiktok-secret', t.appSecret) +
++        '</div>' +
+         '</div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
+     } else if (wizardStep === 2) {
+       const s = integrations.stripe || {};
+@@ -1103,32 +1440,44 @@
+       const stripeOn = !!(s.connected || s.stripeUserId);
+       html = '<h2>Payments</h2>' +
+         '<div id="wiz-save-banner" class="save-banner"></div>' +
+-        '<p class="lead">Connect <strong>your</strong> Stripe and/or PayPal. After you paste keys and hit Save, we activate them on the shop automatically.</p>' +
+-        '<div class="howto"><h3>Stripe (recommended)</h3><ol>' +
+-        '<li>Open <a href="https://dashboard.stripe.com/register" target="_blank" rel="noopener">Stripe</a> and sign in with your business email.</li>' +
+-        '<li>Get your <strong>Secret key</strong> and <strong>Publishable key</strong> from Developers → API keys.</li>' +
+-        '<li>For one-click Connect: copy your Connect <strong>client_id</strong> (starts with ca_) from Settings → Connect.</li>' +
+-        '<li>Paste below → tap <strong>Save &amp; Continue</strong>. If Connect is ready, Stripe opens so you can Approve — then you’re done.</li>' +
++        '<p class="lead">This is how customers pay you. Start with <strong>Stripe</strong> (cards). PayPal is optional. Tap the pink Open buttons — we’ll tell you exactly what to copy.</p>' +
++        '<div class="howto"><h3>Stripe (recommended) — plain English</h3><ol>' +
++        '<li>Tap <strong>Show me Stripe keys</strong> — checklist + site open together.</li>' +
++        '<li>Copy the key starting with <strong>pk_</strong> → Publishable Key.</li>' +
++        '<li>Copy the key starting with <strong>sk_</strong> → Secret Key (keep private).</li>' +
++        '<li>Optional: Settings → Connect → copy <strong>ca_</strong> client ID.</li>' +
++        '<li>Paste → <strong>Save &amp; Activate</strong>. We turn checkout on for you.</li>' +
+         '</ol></div>' +
+         '<div class="integration-grid">' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (stripeOn ? ' on' : '') + '"></span> Stripe' +
+         (stripeOn ? ' <span class="connect-status">Connected' + (s.stripeUserId ? ' · ' + esc(s.stripeUserId) : '') + '</span>' : ' <span class="connect-status off">Not connected yet</span>') +
+         '</h4>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="stripe_keys">Show me Stripe keys</button>' +
++        '<button type="button" class="btn-show-guide" data-guide="stripe_register">Show me create Stripe</button>' +
++        '<a class="btn-open-site" href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Explain Stripe keys like I’m five. What do I paste where?">Ask Coach</button>' +
++        '</div>' +
+         '<div class="connect-actions">' +
+         '<button type="button" class="btn-connect stripe" id="wiz-stripe-connect">🔗 Connect with Stripe now</button>' +
+         (s.stripeUserId ? '<button type="button" class="btn-ghost" id="wiz-stripe-disconnect">Disconnect</button>' : '') +
+         '</div>' +
+         field('Connect Client ID (ca_…)', 'wiz-stripe-connect-id', s.connectClientId) +
+-        field('Publishable Key', 'wiz-stripe-pub', s.publishableKey) +
+-        field('Secret Key', 'wiz-stripe-secret', s.secretKey) +
++        field('Publishable Key (pk_…)', 'wiz-stripe-pub', s.publishableKey) +
++        field('Secret Key (sk_…)', 'wiz-stripe-secret', s.secretKey) +
+         field('Webhook Secret (optional)', 'wiz-stripe-webhook', s.webhookSecret) +
+         '</div>' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (p.connected ? ' on' : '') + '"></span> PayPal</h4>' +
+         '<div class="howto" style="margin-top:0"><h3>PayPal</h3><ol>' +
+-        '<li>Open <a href="https://developer.paypal.com/dashboard/applications" target="_blank" rel="noopener">PayPal Developer</a>.</li>' +
+-        '<li>Create (or open) your Live app → copy Client ID &amp; Secret.</li>' +
+-        '<li>Paste below → Save. Checkout picks them up automatically.</li>' +
++        '<li>Tap <strong>Show me PayPal</strong> (not only paypal.com).</li>' +
++        '<li>Apps &amp; Credentials → create a <strong>Live</strong> app.</li>' +
++        '<li>Copy Client ID + Secret → paste → Save.</li>' +
+         '</ol></div>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="paypal">Show me PayPal</button>' +
++        '<a class="btn-open-site" href="https://developer.paypal.com/dashboard/applications" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Do I need PayPal if I already have Stripe?">Ask Coach</button>' +
++        '</div>' +
+         field('Client ID', 'wiz-paypal-id', p.clientId) + field('Client Secret', 'wiz-paypal-secret', p.clientSecret) +
+         '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
+     } else if (wizardStep === 3) {
+@@ -1138,20 +1487,29 @@
+       const f = sa.facebook || {};
+       html = '<h2>Shopper Logins</h2>' +
+         '<div id="wiz-save-banner" class="save-banner"></div>' +
+-        '<p class="lead">Optional — let customers sign in with Google, Apple, or Facebook. These apps belong to <strong>you</strong>. After Save, the buttons appear on the shop login automatically.</p>' +
+-        '<div class="howto"><h3>Google (easiest)</h3><ol>' +
+-        '<li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Credentials</a>.</li>' +
+-        '<li>Create an OAuth Client ID (type: Web application).</li>' +
+-        '<li>Add authorized redirect URI exactly: <code>https://queenscustoms.shop/api/auth/google/callback</code></li>' +
+-        '<li>Paste Client ID + Secret below, turn Enable ON, tap Save — Google login goes live.</li>' +
++        '<p class="lead"><strong>Optional.</strong> Let customers tap “Continue with Google” (easiest). Apple &amp; Facebook are extras. These apps are <strong>yours</strong>.</p>' +
++        '<div class="howto"><h3>Google (easiest) — click by click</h3><ol>' +
++        '<li>Tap <strong>Open Google Credentials</strong>.</li>' +
++        '<li>Create an OAuth Client ID → type <strong>Web application</strong>.</li>' +
++        '<li>Add redirect URI exactly: <code>https://queenscustoms.shop/api/auth/google/callback</code></li>' +
++        '<li>Paste Client ID + Secret → turn Enable ON → Save.</li>' +
+         '</ol></div>' +
+         '<div class="integration-grid">' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (g.enabled && g.clientId ? ' on' : '') + '"></span> Google</h4>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="google">Show me Google</button>' +
++        '<a class="btn-open-site" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Walk me through Google Sign-In setup simply.">Ask Coach</button>' +
++        '</div>' +
+         '<div class="toggle-row"><label for="wiz-google-on">Enable Google Sign-In on the shop</label><input type="checkbox" id="wiz-google-on"' + (g.enabled ? ' checked' : '') + '/></div>' +
+         field('Client ID', 'wiz-google-id', g.clientId) + field('Client Secret', 'wiz-google-secret', g.clientSecret) +
+         '</div>' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (a.enabled && a.clientId ? ' on' : '') + '"></span> Apple</h4>' +
+-        '<p class="connect-note">Apple Developer → Services ID + Key (.p8). Return URL: <code>https://queenscustoms.shop/api/auth/apple/callback</code></p>' +
++        '<p class="connect-note">Needs a paid Apple Developer account. Skip unless you want the Apple button. Return URL: <code>https://queenscustoms.shop/api/auth/apple/callback</code></p>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="apple">Show me Apple</button>' +
++        '<a class="btn-open-site" href="https://developer.apple.com/account/resources/identifiers/list" target="_blank" rel="noopener">↗ New tab</a>' +
++        '</div>' +
+         '<div class="toggle-row"><label for="wiz-apple-on">Enable Apple Sign-In on the shop</label><input type="checkbox" id="wiz-apple-on"' + (a.enabled ? ' checked' : '') + '/></div>' +
+         field('Services ID (Client ID)', 'wiz-apple-id', a.clientId) +
+         field('Team ID', 'wiz-apple-team', a.teamId) +
+@@ -1160,14 +1518,30 @@
+         '</div>' +
+         '<div class="integration-block"><h4><span class="connected-dot' + (f.enabled && (f.appId || f.clientId) ? ' on' : '') + '"></span> Facebook</h4>' +
+         '<p class="connect-note">Meta for Developers → Facebook Login. Redirect: <code>https://queenscustoms.shop/api/auth/facebook/callback</code></p>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="facebook">Show me Facebook</button>' +
++        '<a class="btn-open-site" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">↗ New tab</a>' +
++        '</div>' +
+         '<div class="toggle-row"><label for="wiz-fb-on">Enable Facebook Sign-In on the shop</label><input type="checkbox" id="wiz-fb-on"' + (f.enabled ? ' checked' : '') + '/></div>' +
+         field('App ID', 'wiz-fb-id', f.appId || f.clientId) + field('App Secret', 'wiz-fb-secret', f.appSecret || f.clientSecret) +
+         '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
+     } else if (wizardStep === 4) {
+-      html = '<h2>Email Marketing</h2><p class="lead">Connect your email platform for newsletters and order updates.</p>' +
+-        '<div class="form-field"><label>Provider</label><select id="wiz-email-provider"><option value="mailchimp">Mailchimp</option><option value="klaviyo">Klaviyo</option><option value="sendgrid">SendGrid</option></select></div>' +
++      html = '<h2>Email Marketing</h2>' +
++        '<p class="lead"><strong>Optional.</strong> Only if you want newsletters. Mailchimp is easiest for beginners.</p>' +
++        '<div class="howto"><h3>Mailchimp (recommended if new)</h3><ol>' +
++        '<li>Tap <strong>Show me Mailchimp</strong>.</li>' +
++        '<li>Create a key → copy it into API Key below.</li>' +
++        '<li>List / Audience ID is which mailing list new signups join.</li>' +
++        '<li>Or skip — Continue with empty boxes.</li>' +
++        '</ol></div>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="mailchimp">Show me Mailchimp</button>' +
++        '<a class="btn-open-site" href="https://admin.mailchimp.com/account/api/" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Do I need email marketing now? What is a List ID?">Ask Coach</button>' +
++        '</div>' +
++        '<div class="form-field"><label>Provider</label><select id="wiz-email-provider"><option value="mailchimp">Mailchimp (easiest)</option><option value="klaviyo">Klaviyo</option><option value="sendgrid">SendGrid</option></select></div>' +
+         field('API Key', 'wiz-email-key', em.apiKey) +
+-        '<div id="wiz-list-field" class="form-field"><label>List ID</label><input type="text" id="wiz-email-list" value="' + escAttr(em.listId || '') + '"/></div>' +
++        '<div id="wiz-list-field" class="form-field"><label>List / Audience ID</label><input type="text" id="wiz-email-list" value="' + escAttr(em.listId || '') + '"/></div>' +
+         '<div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
+     } else if (wizardStep === 5) {
+       const data = await api('/api/admin/products');
+@@ -1189,6 +1563,28 @@
+     }
+ 
+     main.innerHTML = html;
++    wireGuideButtons(main);
++
++    // Open-site / Ask Coach helpers on guided steps
++    document.querySelectorAll('[data-ask]').forEach(btn => {
++      btn.addEventListener('click', () => {
++        const q = btn.getAttribute('data-ask') || '';
++        const input = $('coach-input');
++        const form = $('coach-form');
++        if (input) {
++          input.value = q;
++          input.focus();
++          // Scroll coach into view on mobile
++          const panel = document.querySelector('.ai-panel');
++          if (panel) panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
++        }
++        if (typeof askSetupCoachMessage === 'function') {
++          askSetupCoachMessage(q);
++        } else if (form) {
++          form.requestSubmit();
++        }
++      });
++    });
+ 
+     const lastStep = WIZARD_STEPS.length - 1;
+     const back = $('wiz-back');
+diff --git a/admin/queen-nav.js b/admin/queen-nav.js
+new file mode 100644
+index 0000000..fee61b0
+--- /dev/null
++++ b/admin/queen-nav.js
+@@ -0,0 +1,451 @@
++/**
++ * Admin Queen Navigator — find / jump around Operations + Setup.
++ * Initialized from admin/index.html via QCCAdminQueen.init(bridge).
++ */
++(function () {
++  'use strict';
++
++  /** Searchable map of the admin portal (indexing). */
++  const ADMIN_INDEX = [
++    {
++      id: 'ops-dashboard',
++      title: 'Dashboard',
++      blurb: 'Your home base — stats, recent orders, and new messages.',
++      keywords: ['dashboard', 'home', 'stats', 'overview', 'numbers'],
++      target: { mode: 'operations', page: 'dashboard' },
++    },
++    {
++      id: 'ops-orders',
++      title: 'Orders',
++      blurb: 'See customer orders, update status, and open order details.',
++      keywords: ['orders', 'order', 'shipping', 'shipped', 'fulfillment', 'pending', 'sales'],
++      target: { mode: 'operations', page: 'orders' },
++    },
++    {
++      id: 'ops-customers',
++      title: 'Customers',
++      blurb: 'People who bought or signed up in your shop.',
++      keywords: ['customers', 'customer', 'buyers', 'shoppers', 'people'],
++      target: { mode: 'operations', page: 'customers' },
++    },
++    {
++      id: 'ops-inquiries',
++      title: 'Inquiries (Queen Chat inbox)',
++      blurb: 'Messages from the website Queen Chat and contact form.',
++      keywords: ['inquiries', 'inquiry', 'messages', 'inbox', 'queen chat', 'contact', 'replies'],
++      target: { mode: 'operations', page: 'inquiries' },
++    },
++    {
++      id: 'ops-products',
++      title: 'Products',
++      blurb: 'Edit product names, prices, inventory, and status.',
++      keywords: ['products', 'product', 'inventory', 'price', 'stock', 'catalog', 'tumbler'],
++      target: { mode: 'operations', page: 'products' },
++    },
++    {
++      id: 'ops-admins',
++      title: 'Admin Users',
++      blurb: 'Who can log into this admin portal.',
++      keywords: ['admin', 'admins', 'users', 'team', 'password', 'login email'],
++      target: { mode: 'operations', page: 'admin-users' },
++    },
++    {
++      id: 'mode-setup',
++      title: 'Setup Wizard',
++      blurb: 'Connect Stripe, PayPal, Google login, marketplaces, and more.',
++      keywords: ['setup', 'wizard', 'connect', 'configure', 'integrations', 'keys'],
++      target: { mode: 'setup' },
++    },
++    {
++      id: 'mode-operations',
++      title: 'Operations mode',
++      blurb: 'Day-to-day dashboard for orders and messages.',
++      keywords: ['operations', 'ops', 'daily', 'work'],
++      target: { mode: 'operations', page: 'dashboard' },
++    },
++    {
++      id: 'setup-welcome',
++      title: 'Setup → Welcome',
++      blurb: 'How Setup works in plain English.',
++      keywords: ['welcome', 'start setup', 'how setup works'],
++      target: { mode: 'setup', step: 0, guide: 'overview' },
++    },
++    {
++      id: 'setup-etsy',
++      title: 'Setup → Etsy',
++      blurb: 'Optional: paste Etsy API Key + Shop ID.',
++      keywords: ['etsy', 'shop id', 'marketplace', 'api key etsy'],
++      target: { mode: 'setup', step: 1, guide: 'etsy' },
++    },
++    {
++      id: 'setup-amazon',
++      title: 'Setup → Amazon',
++      blurb: 'Optional: Seller ID / MWS for Amazon sellers.',
++      keywords: ['amazon', 'seller id', 'mws', 'seller central'],
++      target: { mode: 'setup', step: 1, guide: 'amazon' },
++    },
++    {
++      id: 'setup-tiktok',
++      title: 'Setup → TikTok Shop',
++      blurb: 'Optional: TikTok App Key + App Secret.',
++      keywords: ['tiktok', 'tik tok', 'app key', 'app secret'],
++      target: { mode: 'setup', step: 1, guide: 'tiktok' },
++    },
++    {
++      id: 'setup-stripe',
++      title: 'Setup → Stripe payments',
++      blurb: 'Card payments — Publishable key, Secret key, Connect.',
++      keywords: ['stripe', 'card', 'payment', 'payments', 'pk_', 'sk_', 'connect', 'checkout', 'money'],
++      target: { mode: 'setup', step: 2, guide: 'stripe' },
++    },
++    {
++      id: 'setup-paypal',
++      title: 'Setup → PayPal',
++      blurb: 'PayPal checkout Client ID + Secret.',
++      keywords: ['paypal', 'pay pal'],
++      target: { mode: 'setup', step: 2, guide: 'paypal' },
++    },
++    {
++      id: 'setup-google',
++      title: 'Setup → Google Sign-In',
++      blurb: 'Let shoppers continue with Google.',
++      keywords: ['google', 'sign in', 'login', 'oauth', 'social'],
++      target: { mode: 'setup', step: 3, guide: 'google' },
++    },
++    {
++      id: 'setup-apple',
++      title: 'Setup → Apple Sign-In',
++      blurb: 'Optional Apple login (needs Apple Developer).',
++      keywords: ['apple', 'sign in with apple', '.p8'],
++      target: { mode: 'setup', step: 3, guide: 'apple' },
++    },
++    {
++      id: 'setup-facebook',
++      title: 'Setup → Facebook Sign-In',
++      blurb: 'Optional Facebook / Meta login.',
++      keywords: ['facebook', 'meta', 'fb'],
++      target: { mode: 'setup', step: 3, guide: 'facebook' },
++    },
++    {
++      id: 'setup-email',
++      title: 'Setup → Email marketing',
++      blurb: 'Optional Mailchimp / Klaviyo / SendGrid.',
++      keywords: ['email', 'mailchimp', 'klaviyo', 'sendgrid', 'newsletter', 'audience'],
++      target: { mode: 'setup', step: 4, guide: 'email' },
++    },
++    {
++      id: 'setup-products',
++      title: 'Setup → Products quick-edit',
++      blurb: 'Quick price and inventory tweaks during Setup.',
++      keywords: ['setup products', 'quick edit', 'wizard products'],
++      target: { mode: 'setup', step: 5 },
++    },
++    {
++      id: 'setup-admins',
++      title: 'Setup → Add admin',
++      blurb: 'Add another person who can use this portal.',
++      keywords: ['add admin', 'team member', 'setup admin'],
++      target: { mode: 'setup', step: 6 },
++    },
++    {
++      id: 'help-api-key',
++      title: 'What is an API key?',
++      blurb: 'A secret password from Stripe/Etsy/Google — copy/paste, don’t share.',
++      keywords: ['api key', 'what is', 'secret', 'client id', 'explain'],
++      target: { mode: 'setup', step: 1, guide: 'overview', ask: 'What is an API key?' },
++    },
++  ];
++
++  const QUICK = [
++    { label: 'Find Stripe', q: 'stripe' },
++    { label: 'Orders', q: 'orders' },
++    { label: 'Inquiries', q: 'inquiries' },
++    { label: 'Open Setup', q: 'setup wizard' },
++    { label: 'What is an API key?', q: 'what is an api key' },
++  ];
++
++  let bridge = null;
++
++  function esc(s) {
++    return String(s || '')
++      .replace(/&/g, '&amp;')
++      .replace(/</g, '&lt;')
++      .replace(/>/g, '&gt;')
++      .replace(/"/g, '&quot;');
++  }
++
++  function scoreEntry(entry, q) {
++    const t = q.toLowerCase().trim();
++    if (!t) return 0;
++    let score = 0;
++    const title = entry.title.toLowerCase();
++    const blurb = entry.blurb.toLowerCase();
++    if (title === t) score += 100;
++    if (title.includes(t)) score += 40;
++    if (blurb.includes(t)) score += 10;
++    entry.keywords.forEach((k) => {
++      const kw = k.toLowerCase();
++      if (kw === t) score += 50;
++      else if (t.includes(kw) || kw.includes(t)) score += 24;
++      else {
++        const parts = t.split(/\s+/);
++        parts.forEach((p) => {
++          if (p.length > 2 && (kw.includes(p) || p.includes(kw))) score += 8;
++        });
++      }
++    });
++    return score;
++  }
++
++  function searchIndex(q, limit) {
++    limit = limit || 6;
++    return ADMIN_INDEX
++      .map((e) => ({ entry: e, score: scoreEntry(e, q) }))
++      .filter((x) => x.score > 0)
++      .sort((a, b) => b.score - a.score)
++      .slice(0, limit)
++      .map((x) => x.entry);
++  }
++
++  function el(html) {
++    const t = document.createElement('template');
++    t.innerHTML = html.trim();
++    return t.content.firstElementChild;
++  }
++
++  function addBubble(log, text, who) {
++    const b = document.createElement('div');
++    b.className = 'aq-bubble ' + who;
++    b.innerHTML = text;
++    log.appendChild(b);
++    log.scrollTop = log.scrollHeight;
++    return b;
++  }
++
++  function renderHits(log, hits, preface) {
++    if (preface) addBubble(log, preface, 'queen');
++    if (!hits.length) {
++      addBubble(log, 'I couldn’t find that in the index. Try “Stripe”, “orders”, “inquiries”, or “Etsy”. Or ask in everyday words.', 'queen');
++      return;
++    }
++    const wrap = document.createElement('div');
++    wrap.className = 'aq-hits';
++    hits.forEach((h) => {
++      const btn = document.createElement('button');
++      btn.type = 'button';
++      btn.className = 'aq-hit';
++      btn.innerHTML = '<strong>' + esc(h.title) + '</strong><span>' + esc(h.blurb) + '</span>';
++      btn.addEventListener('click', () => go(h, log));
++      wrap.appendChild(btn);
++    });
++    log.appendChild(wrap);
++    log.scrollTop = log.scrollHeight;
++  }
++
++  function go(entry, log) {
++    if (!bridge) return;
++    addBubble(log, 'Taking you to <strong>' + esc(entry.title) + '</strong>…', 'queen');
++    bridge.navigate(entry.target);
++    if (entry.target.ask && typeof bridge.askSetupCoach === 'function') {
++      setTimeout(() => bridge.askSetupCoach(entry.target.ask), 400);
++    }
++  }
++
++  function handleQuery(q, log, input) {
++    const query = (q || '').trim();
++    if (!query) return;
++    addBubble(log, esc(query), 'user');
++    if (input) input.value = '';
++
++    const hits = searchIndex(query);
++    if (hits.length) {
++      renderHits(
++        log,
++        hits,
++        hits.length === 1
++          ? 'Found it — tap below and I’ll take you there:'
++          : 'Here’s what matches in your admin index — tap one:'
++      );
++      // Auto-jump when it's an obvious single strong match
++      if (hits.length === 1 && scoreEntry(hits[0], query) >= 40) {
++        setTimeout(() => go(hits[0], log), 350);
++      }
++      return;
++    }
++
++    addBubble(
++      log,
++      'No exact match. Try <strong>Stripe</strong>, <strong>orders</strong>, <strong>inquiries</strong>, <strong>Etsy</strong>, or <strong>Setup</strong> — I’ll jump you there.',
++      'queen'
++    );
++  }
++
++  function injectCriticalCss() {
++    if (document.getElementById('aq-nav-critical-css')) return;
++    const style = document.createElement('style');
++    style.id = 'aq-nav-critical-css';
++    style.textContent = `
++      body:not(.authed) #aq-nav { display: none !important; }
++      #aq-nav.aq-nav {
++        position: fixed !important; bottom: 24px !important; left: 18px !important;
++        z-index: 13000 !important; pointer-events: none !important;
++      }
++      #aq-nav .aq-fab, #aq-nav .aq-panel, #aq-nav .aq-tip { pointer-events: auto !important; }
++      #aq-nav .aq-fab {
++        width: 64px !important; height: 64px !important; border-radius: 50% !important;
++        border: 3px solid #FF1A8C !important; background: #1a0a12 !important; padding: 0 !important;
++        cursor: pointer !important; position: relative !important; overflow: hidden !important;
++        display: grid !important; place-items: center !important; color: #fff !important;
++        box-shadow: 0 8px 28px rgba(255,26,140,0.55), 0 0 0 4px rgba(255,26,140,0.2) !important;
++        font-size: 1.6rem !important;
++      }
++      #aq-nav .aq-fab img {
++        width: 100% !important; height: 100% !important; object-fit: cover !important;
++        object-position: center top !important; border-radius: 50% !important; display: block !important;
++      }
++      #aq-nav .aq-fab-pulse {
++        position: absolute !important; inset: -5px !important; border-radius: 50% !important;
++        border: 2px solid rgba(255,26,140,0.55) !important; pointer-events: none !important;
++        animation: aq-pulse 2.2s ease-out infinite !important;
++      }
++      @keyframes aq-pulse {
++        0% { transform: scale(0.95); opacity: 0.75; }
++        100% { transform: scale(1.35); opacity: 0; }
++      }
++      #aq-nav .aq-tip {
++        position: absolute !important; left: 74px !important; bottom: 16px !important;
++        white-space: nowrap !important; background: #1c1c22 !important; color: #fff !important;
++        border: 1px solid rgba(255,26,140,0.45) !important; border-radius: 999px !important;
++        padding: 8px 12px !important; font-size: 0.78rem !important; font-weight: 600 !important;
++        opacity: 0; transition: opacity 0.25s;
++      }
++      #aq-nav:not(.open) .aq-tip.show { opacity: 1 !important; }
++      #aq-nav .aq-panel {
++        position: absolute !important; bottom: 78px !important; left: 0 !important;
++        width: min(340px, calc(100vw - 28px)) !important;
++        height: min(420px, calc(100vh - 160px)) !important;
++        background: #141418 !important; border: 1px solid rgba(255,26,140,0.4) !important;
++        border-radius: 16px !important; overflow: hidden !important;
++        display: none !important; flex-direction: column !important;
++        box-shadow: 0 16px 48px rgba(0,0,0,0.55) !important;
++      }
++      #aq-nav.open .aq-panel { display: flex !important; }
++      @media (max-width: 768px) {
++        #aq-nav.aq-nav { bottom: max(88px, env(safe-area-inset-bottom, 0px) + 72px) !important; left: 12px !important; }
++        #aq-nav .aq-tip { display: none !important; }
++        #aq-nav .aq-fab { width: 58px !important; height: 58px !important; }
++      }
++    `;
++    document.head.appendChild(style);
++  }
++
++  function init(b) {
++    bridge = b;
++    injectCriticalCss();
++    if (document.getElementById('aq-nav')) {
++      document.getElementById('aq-nav').style.display = '';
++      return;
++    }
++
++    const root = el(`
++<div class="aq-nav" id="aq-nav" aria-live="polite">
++  <div class="aq-panel" id="aq-panel" role="dialog" aria-label="Admin Queen navigator" hidden>
++    <div class="aq-header">
++      <img src="/assets/artist.jpg" alt="The Vibe Queen" width="40" height="40" onerror="this.outerHTML='<span style=&quot;font-size:1.6rem&quot;>👑</span>'"/>
++      <div class="aq-header-text">
++        <strong>Admin Queen</strong>
++        <span>Find anything · I’ll take you there</span>
++      </div>
++      <button type="button" class="aq-close" id="aq-close" aria-label="Close">×</button>
++    </div>
++    <div class="aq-messages" id="aq-messages"></div>
++    <div class="aq-chips" id="aq-chips"></div>
++    <form class="aq-form" id="aq-form">
++      <input type="search" id="aq-input" placeholder="Find Stripe, orders, Etsy…" autocomplete="off"/>
++      <button type="submit" class="aq-send">Go</button>
++    </form>
++  </div>
++  <button type="button" class="aq-fab" id="aq-fab" aria-label="Open Admin Queen" aria-expanded="false">
++    <span class="aq-fab-pulse" aria-hidden="true"></span>
++    <img src="/assets/artist.jpg" alt="" onerror="this.outerHTML='<span>👑</span>'"/>
++  </button>
++  <div class="aq-tip" id="aq-tip">Ask me where something is 👑</div>
++</div>`);
++
++    document.body.appendChild(root);
++
++    const panel = document.getElementById('aq-panel');
++    const fab = document.getElementById('aq-fab');
++    const log = document.getElementById('aq-messages');
++    const chips = document.getElementById('aq-chips');
++    const form = document.getElementById('aq-form');
++    const input = document.getElementById('aq-input');
++    const tip = document.getElementById('aq-tip');
++
++    function open() {
++      root.classList.add('open');
++      panel.hidden = false;
++      fab.setAttribute('aria-expanded', 'true');
++      tip.classList.remove('show');
++      if (!log.dataset.greeted) {
++        addBubble(
++          log,
++          'Hey Queen 👑 I’m your <strong>Admin navigator</strong>. Ask where something is — “Stripe”, “orders”, “inquiries” — and I’ll open it. I work in <em>Operations</em> and <em>Setup</em>.',
++          'queen'
++        );
++        log.dataset.greeted = '1';
++      }
++      setTimeout(() => input.focus(), 100);
++    }
++
++    function close() {
++      root.classList.remove('open');
++      fab.setAttribute('aria-expanded', 'false');
++      setTimeout(() => {
++        if (!root.classList.contains('open')) panel.hidden = true;
++      }, 200);
++    }
++
++    QUICK.forEach((item) => {
++      const btn = document.createElement('button');
++      btn.type = 'button';
++      btn.className = 'aq-chip';
++      btn.textContent = item.label;
++      btn.addEventListener('click', () => handleQuery(item.q, log, input));
++      chips.appendChild(btn);
++    });
++
++    fab.addEventListener('click', () => {
++      if (root.classList.contains('open')) close();
++      else open();
++    });
++    document.getElementById('aq-close').addEventListener('click', close);
++    form.addEventListener('submit', (e) => {
++      e.preventDefault();
++      handleQuery(input.value, log, input);
++    });
++
++    document.addEventListener('keydown', (e) => {
++      if (e.key === 'Escape' && root.classList.contains('open')) close();
++      // Ctrl/Cmd+K — quick find
++      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
++        e.preventDefault();
++        if (!document.body.classList.contains('authed')) return;
++        open();
++      }
++    });
++
++    setTimeout(() => tip.classList.add('show'), 1600);
++    setTimeout(() => tip.classList.remove('show'), 6500);
++
++    // Expose search for bridge/debug
++    window.QCCAdminQueen.search = searchIndex;
++    window.QCCAdminQueen.open = open;
++  }
++
++  window.QCCAdminQueen = {
++    init: init,
++    index: ADMIN_INDEX,
++    search: searchIndex,
++  };
++})();
+diff --git a/app.js b/app.js
+index 929434a..122914a 100644
+--- a/app.js
++++ b/app.js
+@@ -148,7 +148,7 @@
+     {
+       id: 'p13',
+       name: 'Freedom Skull Tumbler',
+-      desc: '30oz dark marble tumbler with patriotic skull cowboy art. Freedom isn't free — drink boldly.',
++      desc: "30oz dark marble tumbler with patriotic skull cowboy art. Freedom isn't free — drink boldly.",
+       price: 40,
+       img: 'assets/products/freedom-skull.jpg',
+       badge: null,
+@@ -616,14 +616,23 @@
+       mobileNav.classList.add('open');
+       if (overlay) overlay.classList.add('open');
+       document.body.style.overflow = 'hidden';
++      document.body.classList.add('nav-open');
++      // Close Queen Chat so it can't cover the drawer
++      const qc = document.getElementById('queen-chat');
++      if (qc) qc.classList.remove('open');
+     }
+     function closeNav() {
+       mobileNav.classList.remove('open');
+       if (overlay) overlay.classList.remove('open');
+       document.body.style.overflow = '';
++      document.body.classList.remove('nav-open');
+     }
+ 
+-    burger.addEventListener('click', openNav);
++    burger.addEventListener('click', (e) => {
++      e.preventDefault();
++      e.stopPropagation();
++      openNav();
++    });
+     if (closeBtn) closeBtn.addEventListener('click', closeNav);
+     if (overlay) overlay.addEventListener('click', closeNav);
+ 
+diff --git a/index.html b/index.html
+index 718b0c9..adc3fd8 100644
+--- a/index.html
++++ b/index.html
+@@ -142,7 +142,7 @@
+   <meta name="theme-color" content="#FF1A8C"/>
+ 
+   <link href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&f[]=satoshi@300,400,500,700&display=swap" rel="stylesheet"/>
+-  <link rel="stylesheet" href="style.css?v=1780617330"/>
++  <link rel="stylesheet" href="style.css?v=1786148500"/>
+ </head>
+ <body>
+ <canvas id="sparkle-canvas" aria-hidden="true"></canvas>
+@@ -180,7 +180,7 @@
+     <nav class="main-nav">
+       <a href="#shop">Shop</a>
+       <a href="#gallery">Gallery</a>
+-      <a href="/shop/" class="nav-studio-link">Studio ✦</a>
++      <a href="/shop/" class="nav-studio-link">Winks Studio ✦</a>
+       <a href="#collections">Collections</a>
+       <a href="#tiktok-section">TikTok</a>
+       <a href="#sessions">Book Session</a>
+@@ -218,7 +218,7 @@
+   <button class="mob-close" id="mob-close"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+   <a href="#shop" class="mob-link">Shop</a>
+   <a href="#gallery" class="mob-link">Gallery</a>
+-  <a href="/shop/" class="mob-link nav-studio-link">Studio ✦ — Design & Order</a>
++  <a href="/shop/" class="mob-link nav-studio-link">Winks Design Studio ✦</a>
+   <a href="#collections" class="mob-link">Collections</a>
+   <a href="#tiktok-section" class="mob-link">TikTok</a>
+   <a href="#sessions" class="mob-link">Book a Session</a>
+@@ -1368,12 +1368,12 @@
+ <!-- TOAST -->
+ <div class="toast" id="toast"></div>
+ 
+-<script src="app.js?v=1780617330"></script>
++<script src="app.js?v=1786148500"></script>
+ <script src="builder.js?v=1780617330"></script>
+ <script src="auth.js?v=1780617330"></script>
+ <script src="tiktok.js?v=1780617330"></script>
+ <script src="music.js?v=1780617330"></script>
+ <script src="checkout.js?v=1780617330"></script>
+-<script src="queen-chat.js?v=1780618000"></script>
++<script src="queen-chat.js?v=1786149600"></script>
+ </body>
+ </html>
+diff --git a/queen-chat.js b/queen-chat.js
+index 9c61326..2b173f1 100644
+--- a/queen-chat.js
++++ b/queen-chat.js
+@@ -1,6 +1,9 @@
+-/* Queens Custom Creations — Queen Chat (The Vibe Queen) */
++/* Queens Custom Creations — Queen Chat (The Vibe Queen)
++ * Local scripted replies only (no /api/queen-chat). Form still posts inquiries. */
+ (function () {
+-  const AVATAR = 'assets/artist.jpg';
++  'use strict';
++
++  const AVATAR = '/assets/artist.jpg';
+   const QUICK = [
+     'How much for a custom tumbler?',
+     'How long does shipping take?',
+@@ -8,21 +11,183 @@
+     'Do you do bulk / party orders?',
+   ];
+ 
+-  const REPLIES = {
+-    price: "Customs start at $40. Price depends on size, glitter, and how detailed your design is — drop what you're dreaming up and I'll quote you 👑",
+-    ship: 'Most customs ship in about 2–3 weeks (bulk can take longer). Rush options are available when I have studio space — ask and I\'ll check!',
+-    design: 'Yes queen! Upload inspo, a screenshot, or describe the vibe in Queens Studio / this chat. I\'ll make it one-of-a-kind.',
+-    bulk: 'Absolutely — birthday squads, bridal parties, team cups, all of it. Tell me quantity + theme and I\'ll send bulk pricing.',
+-    default: "Got it — leave your name, email, and message below and I'll reply personally (usually within 24 hours). 💕",
+-  };
+-
+-  function guessReply(text) {
+-    const t = text.toLowerCase();
+-    if (/price|cost|how much|\$/.test(t)) return REPLIES.price;
+-    if (/ship|deliver|turnaround|how long|week/.test(t)) return REPLIES.ship;
+-    if (/design|upload|photo|logo|custom idea|inspo/.test(t)) return REPLIES.design;
+-    if (/bulk|party|squad|bridal|team|dozen/.test(t)) return REPLIES.bulk;
+-    return REPLIES.default;
++  function localReply(text) {
++    const t = String(text || '').toLowerCase();
++    if (/price|cost|how much|\$/.test(t)) {
++      return "Customs start at $40. Price depends on size, glitter, and how detailed your design is — drop what you're dreaming up and I'll quote you 👑";
++    }
++    if (/ship|deliver|turnaround|how long|week/.test(t)) {
++      return "Most customs ship in about 2–3 weeks (bulk can take longer). Rush options are available when I have studio space — ask and I'll check!";
++    }
++    if (/design|upload|photo|logo|custom idea|inspo|studio|winks/.test(t)) {
++      return "Yes queen! Upload inspo, a screenshot, or describe the vibe in Winks Design Studio / this chat. I'll make it one-of-a-kind.";
++    }
++    if (/bulk|party|squad|bridal|team|dozen/.test(t)) {
++      return "Absolutely — birthday squads, bridal parties, team cups, all of it. Tell me quantity + theme and I'll send bulk pricing.";
++    }
++    return "Got it — leave your name, email, and message below and I'll reply personally (usually within 24 hours). 💕";
++  }
++
++  if (!document.getElementById('queen-chat-critical-css')) {
++    const style = document.createElement('style');
++    style.id = 'queen-chat-critical-css';
++    style.textContent = `
++      #queen-chat.queen-chat {
++        position: fixed !important;
++        bottom: max(16px, env(safe-area-inset-bottom, 0px) + 10px) !important;
++        left: 12px !important;
++        z-index: 9000 !important;
++        font-family: inherit;
++        pointer-events: none !important;
++      }
++      body.nav-open #queen-chat { display: none !important; }
++      #queen-chat .queen-chat-fab,
++      #queen-chat .queen-chat-panel,
++      #queen-chat .queen-chat-tip {
++        pointer-events: auto !important;
++      }
++      #queen-chat .queen-chat-fab {
++        width: 60px !important; height: 60px !important; border-radius: 50% !important;
++        border: 3px solid #FF1A8C !important; padding: 0 !important; cursor: pointer !important;
++        overflow: hidden !important; background: #111 !important; display: grid !important; place-items: center !important;
++        box-shadow: 0 8px 28px rgba(255,26,140,0.55) !important;
++        position: relative !important; color: #fff !important; font-size: 1.55rem !important;
++        transform: none !important;
++      }
++      #queen-chat .queen-chat-fab img {
++        width: 100% !important; height: 100% !important; object-fit: cover !important;
++        object-position: center top !important; display: block !important; border-radius: 50% !important;
++      }
++      #queen-chat .qc-dot {
++        position: absolute !important; top: 3px !important; right: 3px !important;
++        width: 11px !important; height: 11px !important; background: #22c55e !important;
++        border: 2px solid #0d0d0d !important; border-radius: 50% !important;
++      }
++      #queen-chat .queen-chat-tip {
++        position: absolute !important; left: 72px !important; bottom: 14px !important;
++        white-space: nowrap !important; background: rgba(13,13,13,0.95) !important; color: #fff !important;
++        border: 1px solid rgba(255,26,140,0.5) !important; border-radius: 999px !important;
++        padding: 8px 12px !important; font-size: 0.76rem !important; font-weight: 700 !important;
++        opacity: 0; transition: opacity 0.25s ease;
++      }
++      #queen-chat:not(.open) .queen-chat-tip.show { opacity: 1 !important; }
++      #queen-chat .queen-chat-panel {
++        position: fixed !important;
++        left: 12px !important;
++        right: auto !important;
++        bottom: max(88px, env(safe-area-inset-bottom, 0px) + 76px) !important;
++        top: auto !important;
++        width: min(380px, calc(100vw - 24px)) !important;
++        height: min(440px, calc(100vh - 120px)) !important;
++        max-height: min(440px, calc(100vh - 120px)) !important;
++        background: #141418 !important;
++        border: 1px solid rgba(255,26,140,0.45) !important;
++        border-radius: 18px !important;
++        box-shadow: 0 16px 40px rgba(0,0,0,0.6) !important;
++        display: none !important;
++        flex-direction: column !important;
++        overflow: hidden !important;
++        transform: none !important;
++        opacity: 1 !important;
++      }
++      #queen-chat.open .queen-chat-panel {
++        display: flex !important;
++      }
++      #queen-chat .qc-header {
++        flex: 0 0 auto !important;
++        display: flex !important; align-items: center !important; gap: 10px !important;
++        padding: 12px 14px !important;
++        background: linear-gradient(135deg, #1a0a12, #2a1020) !important;
++        border-bottom: 1px solid rgba(255,26,140,0.25) !important;
++      }
++      #queen-chat .qc-header img {
++        width: 40px !important; height: 40px !important; border-radius: 50% !important;
++        object-fit: cover !important; object-position: center top !important;
++        border: 2px solid #FF1A8C !important; flex-shrink: 0 !important;
++      }
++      #queen-chat .qc-header-text { min-width: 0 !important; flex: 1 !important; }
++      #queen-chat .qc-header-text strong { color: #fff !important; font-size: 0.92rem !important; display: block !important; }
++      #queen-chat .qc-header-text span { color: rgba(255,255,255,0.75) !important; font-size: 0.72rem !important; }
++      #queen-chat .qc-close {
++        margin-left: auto !important; width: 32px !important; height: 32px !important;
++        border-radius: 50% !important; border: 1px solid rgba(255,255,255,0.2) !important;
++        background: transparent !important; color: #fff !important; font-size: 1.2rem !important; cursor: pointer !important;
++        flex-shrink: 0 !important;
++      }
++      #queen-chat .qc-messages {
++        flex: 1 1 auto !important; min-height: 80px !important; overflow-y: auto !important;
++        padding: 12px !important; display: flex !important; flex-direction: column !important; gap: 8px !important;
++        background: #0f0f12 !important;
++      }
++      #queen-chat .qc-bubble {
++        max-width: 90% !important; padding: 9px 11px !important; border-radius: 12px !important;
++        font-size: 0.84rem !important; line-height: 1.45 !important; color: #fff !important;
++      }
++      #queen-chat .qc-bubble.queen {
++        align-self: flex-start !important; background: rgba(255,26,140,0.18) !important;
++        border: 1px solid rgba(255,26,140,0.4) !important;
++      }
++      #queen-chat .qc-bubble.user {
++        align-self: flex-end !important; background: rgba(255,255,255,0.1) !important;
++        border: 1px solid rgba(255,255,255,0.18) !important;
++      }
++      #queen-chat .qc-chips {
++        flex: 0 0 auto !important; display: flex !important; flex-wrap: wrap !important; gap: 6px !important;
++        padding: 0 12px 8px !important; background: #0f0f12 !important; max-height: 68px !important; overflow: auto !important;
++      }
++      #queen-chat .qc-chip {
++        padding: 6px 10px !important; border-radius: 999px !important;
++        border: 1px solid rgba(255,26,140,0.45) !important; background: rgba(255,26,140,0.12) !important;
++        color: #fff !important; font-size: 0.7rem !important; font-weight: 600 !important; cursor: pointer !important;
++      }
++      #queen-chat .qc-form {
++        flex: 0 0 auto !important; padding: 10px 12px 12px !important;
++        border-top: 1px solid rgba(255,255,255,0.1) !important; background: #141418 !important;
++        display: flex !important; flex-direction: column !important; gap: 7px !important;
++      }
++      #queen-chat .qc-form input,
++      #queen-chat .qc-form textarea {
++        width: 100% !important; box-sizing: border-box !important;
++        padding: 10px 12px !important; border-radius: 10px !important;
++        border: 1px solid rgba(255,255,255,0.22) !important;
++        background: rgba(255,255,255,0.08) !important;
++        color: #fff !important; font-size: 16px !important;
++        font-family: inherit !important; outline: none !important;
++      }
++      #queen-chat .qc-form input::placeholder,
++      #queen-chat .qc-form textarea::placeholder {
++        color: rgba(255,255,255,0.55) !important;
++      }
++      #queen-chat .qc-form textarea { min-height: 48px !important; max-height: 64px !important; resize: none !important; }
++      #queen-chat .qc-send {
++        align-self: flex-end !important; padding: 10px 16px !important; border-radius: 999px !important;
++        border: none !important; background: #FF1A8C !important; color: #fff !important;
++        font-weight: 700 !important; font-size: 0.84rem !important; cursor: pointer !important;
++      }
++      #queen-chat .qc-status { font-size: 0.72rem !important; color: rgba(255,255,255,0.7) !important; min-height: 1em !important; }
++      @media (max-width: 640px) {
++        #queen-chat.queen-chat {
++          bottom: max(72px, env(safe-area-inset-bottom, 0px) + 58px) !important;
++          left: 10px !important;
++        }
++        #queen-chat .queen-chat-fab { width: 56px !important; height: 56px !important; }
++        #queen-chat .queen-chat-tip { display: none !important; }
++        #queen-chat .queen-chat-panel {
++          left: 10px !important;
++          right: 10px !important;
++          width: auto !important;
++          bottom: max(140px, env(safe-area-inset-bottom, 0px) + 120px) !important;
++          height: min(50vh, 360px) !important;
++          max-height: min(50vh, 360px) !important;
++        }
++        #queen-chat .qc-chips { max-height: 56px !important; }
++        #queen-chat .qc-form { gap: 5px !important; padding: 8px 10px 10px !important; }
++        #queen-chat .qc-form input,
++        #queen-chat .qc-form textarea { padding: 8px 10px !important; }
++        #queen-chat .qc-messages { min-height: 96px !important; }
++      }
++    `;
++    document.head.appendChild(style);
+   }
+ 
+   function el(html) {
+@@ -31,14 +196,16 @@
+     return t.content.firstElementChild;
+   }
+ 
++  if (document.getElementById('queen-chat')) return;
++
+   const root = el(`
+ <div class="queen-chat" id="queen-chat" aria-live="polite">
+   <div class="queen-chat-panel" id="qc-panel" role="dialog" aria-label="Chat with The Vibe Queen" hidden>
+     <div class="qc-header">
+-      <img src="${AVATAR}" alt="The Vibe Queen" width="44" height="44"/>
++      <img src="${AVATAR}" alt="The Vibe Queen" width="40" height="40" onerror="this.outerHTML='<span style=\\'font-size:1.5rem\\'>👑</span>'"/>
+       <div class="qc-header-text">
+         <strong>The Vibe Queen</strong>
+-        <span>● Usually replies within 24 hrs</span>
++        <span>● Ask about customs, shipping, bulk</span>
+       </div>
+       <button type="button" class="qc-close" id="qc-close" aria-label="Close chat">×</button>
+     </div>
+@@ -53,25 +220,26 @@
+     </form>
+   </div>
+   <button type="button" class="queen-chat-fab" id="qc-fab" aria-label="Chat with The Vibe Queen" aria-expanded="false">
+-    <span class="qc-pulse" aria-hidden="true"></span>
+-    <img src="${AVATAR}" alt="The Vibe Queen"/>
++    <img src="${AVATAR}" alt="The Vibe Queen" onerror="this.outerHTML='<span>👑</span>'"/>
+     <span class="qc-dot" aria-hidden="true"></span>
+   </button>
+   <div class="queen-chat-tip" id="qc-tip">Chat with The Vibe Queen 👑</div>
+ </div>`);
+ 
+-  document.body.appendChild(root);
++  function mount() { document.body.appendChild(root); }
++  if (document.body) mount();
++  else document.addEventListener('DOMContentLoaded', mount);
+ 
+-  const chat = document.getElementById('queen-chat');
+-  const panel = document.getElementById('qc-panel');
+-  const fab = document.getElementById('qc-fab');
+-  const closeBtn = document.getElementById('qc-close');
+-  const messages = document.getElementById('qc-messages');
+-  const chips = document.getElementById('qc-chips');
+-  const form = document.getElementById('qc-form');
+-  const status = document.getElementById('qc-status');
+-  const tip = document.getElementById('qc-tip');
+-  const msgInput = document.getElementById('qc-message');
++  const chat = root;
++  const panel = root.querySelector('#qc-panel');
++  const fab = root.querySelector('#qc-fab');
++  const closeBtn = root.querySelector('#qc-close');
++  const messages = root.querySelector('#qc-messages');
++  const chips = root.querySelector('#qc-chips');
++  const form = root.querySelector('#qc-form');
++  const status = root.querySelector('#qc-status');
++  const tip = root.querySelector('#qc-tip');
++  const msgInput = root.querySelector('#qc-message');
+ 
+   function addBubble(text, who) {
+     const b = document.createElement('div');
+@@ -97,7 +265,7 @@
+     fab.setAttribute('aria-expanded', 'false');
+     setTimeout(() => {
+       if (!chat.classList.contains('open')) panel.hidden = true;
+-    }, 220);
++    }, 180);
+   }
+ 
+   QUICK.forEach((label) => {
+@@ -108,13 +276,14 @@
+     btn.addEventListener('click', () => {
+       msgInput.value = label;
+       addBubble(label, 'user');
+-      addBubble(guessReply(label), 'queen');
++      addBubble(localReply(label), 'queen');
+       msgInput.focus();
+     });
+     chips.appendChild(btn);
+   });
+ 
+-  fab.addEventListener('click', () => {
++  fab.addEventListener('click', (e) => {
++    e.stopPropagation();
+     if (chat.classList.contains('open')) closeChat();
+     else openChat();
+   });
+@@ -124,48 +293,44 @@
+     if (e.key === 'Escape' && chat.classList.contains('open')) closeChat();
+   });
+ 
+-  setTimeout(() => tip.classList.add('show'), 1800);
++  setTimeout(() => tip.classList.add('show'), 1400);
+   setTimeout(() => tip.classList.remove('show'), 7000);
+ 
+   form.addEventListener('submit', async (e) => {
+     e.preventDefault();
+-    const name = document.getElementById('qc-name').value.trim();
+-    const email = document.getElementById('qc-email').value.trim();
++    const name = root.querySelector('#qc-name').value.trim();
++    const email = root.querySelector('#qc-email').value.trim();
+     const message = msgInput.value.trim();
+     if (!name || !email || !message) return;
+ 
+-    const sendBtn = document.getElementById('qc-send');
++    const sendBtn = root.querySelector('#qc-send');
+     sendBtn.disabled = true;
+     status.textContent = 'Sending…';
+-    status.style.color = 'rgba(255,255,255,0.7)';
++    status.style.color = 'rgba(255,255,255,0.75)';
+ 
+     addBubble(message, 'user');
++    addBubble(localReply(message), 'queen');
+ 
+     try {
+-      const res = await fetch('/api/inquiries', {
++      const inqRes = await fetch('/api/inquiries', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({
+-          name,
+-          email,
+-          subject: 'Queen Chat',
+-          message,
+-          source: 'queen-chat',
++          name, email, subject: 'Queen Chat', message, source: 'queen-chat',
+         }),
+       });
+-      if (!res.ok) throw new Error('bad status');
+-      addBubble(guessReply(message), 'queen');
+-      addBubble("Message locked in — I'll hit your inbox soon. Meanwhile peek at Queens Studio for a full custom build ✨", 'queen');
++      if (!inqRes.ok) throw new Error('bad status');
++      addBubble("Message locked in — I'll also hit your inbox soon. Peek at Winks Design Studio for a full custom build ✨", 'queen');
+       status.textContent = 'Sent! Check your email for my reply 👑';
+       status.style.color = '#22c55e';
+       msgInput.value = '';
+       chips.style.display = 'none';
+     } catch (err) {
+       addBubble(
+-        "My chat inbox is warming up — email me at wired4365@aol.com or use the contact form and I'll get back to you!",
++        "My chat inbox is warming up — email me at wired4365@aol.com or use the contact form!",
+         'queen'
+       );
+-      status.textContent = 'Couldn’t reach the server — try Contact below.';
++      status.textContent = "Couldn't reach the server — try Contact below.";
+       status.style.color = '#f59e0b';
+     } finally {
+       sendBtn.disabled = false;
+diff --git a/server.js b/server.js
+index 738fa8e..f610451 100644
+--- a/server.js
++++ b/server.js
+@@ -366,6 +366,23 @@ app.post('/api/inquiries', (req, res) => {
+   res.status(201).json({ success: true, id: result.lastInsertRowid, message: 'Message received! The Vibe Queen responds within 24 hours. 👑' });
+ });
+ 
++// Public Queen Chat — AI when OPENAI_API_KEY / SETUP_COACH_API_KEY set, else free rules
++app.get('/api/queen-chat/status', (req, res) => {
++  res.json(setupCoach.coachStatus());
++});
++
++app.post('/api/queen-chat', async (req, res) => {
++  try {
++    const message = req.body && req.body.message;
++    const result = await setupCoach.answerQueenChat(message);
++    if (result.error) return res.status(result.status || 400).json({ error: result.error });
++    res.json(result);
++  } catch (e) {
++    console.error('[queen-chat]', e);
++    res.status(500).json({ error: e.message || 'Queen Chat failed' });
++  }
++});
++
+ // ── Admin: Products ───────────────────────────────────────────────────────────
+ 
+ app.get('/api/admin/products', adminMiddleware, (req, res) => {
+@@ -676,7 +693,20 @@ app.get('/shop/',         (req, res) => res.sendFile(path.join(__dirname, 'shop/
+ app.get('/order-success', (req, res) => res.sendFile(path.join(__dirname, 'order-success.html')));
+ app.get('/order-cancel',  (req, res) => res.sendFile(path.join(__dirname, 'order-cancel.html')));
+ app.get('/admin',         (req, res) => res.sendFile(path.join(__dirname, 'admin/index.html')));
+-app.get('/admin/*',       (req, res) => res.sendFile(path.join(__dirname, 'admin/index.html')));
++// Explicit admin JS assets (must never fall through to SPA HTML)
++app.get('/admin/queen-nav.js', (req, res) => {
++  res.type('application/javascript');
++  res.sendFile(path.join(__dirname, 'admin/queen-nav.js'));
++});
++app.get('/admin/guide-browser.js', (req, res) => {
++  res.type('application/javascript');
++  res.sendFile(path.join(__dirname, 'admin/guide-browser.js'));
++});
++// SPA fallback for admin — never swallow real static assets (queen-nav.js, etc.)
++app.get('/admin/*', (req, res, next) => {
++  if (/\.(js|css|map|png|jpe?g|webp|gif|svg|ico|woff2?)$/i.test(req.path)) return next();
++  res.sendFile(path.join(__dirname, 'admin/index.html'));
++});
+ 
+ // ── Start ─────────────────────────────────────────────────────────────────────
+ initDB().then(() => {
+diff --git a/setupCoach.js b/setupCoach.js
+index 9998353..d6bfe78 100644
+--- a/setupCoach.js
++++ b/setupCoach.js
+@@ -193,9 +193,103 @@ async function answerSetupCoach(message, ctx = {}) {
+   };
+ }
+ 
++function ruleBasedQueenChat(message) {
++  const t = String(message || '').toLowerCase();
++  if (/price|cost|how much|\$/.test(t)) {
++    return "Customs start at $40. Price depends on size, glitter, and how detailed your design is — drop what you're dreaming up and I'll quote you 👑";
++  }
++  if (/ship|deliver|turnaround|how long|week/.test(t)) {
++    return "Most customs ship in about 2–3 weeks (bulk can take longer). Rush options are available when I have studio space — ask and I'll check!";
++  }
++  if (/design|upload|photo|logo|custom idea|inspo/.test(t)) {
++    return "Yes queen! Upload inspo, a screenshot, or describe the vibe in Queens Studio / this chat. I'll make it one-of-a-kind.";
++  }
++  if (/bulk|party|squad|bridal|team|dozen/.test(t)) {
++    return "Absolutely — birthday squads, bridal parties, team cups, all of it. Tell me quantity + theme and I'll send bulk pricing.";
++  }
++  return "Got it — leave your name, email, and message if you want a personal reply (usually within 24 hours). Or ask me about customs, shipping, or bulk 💕";
++}
++
++async function tryOpenAIQueenChat(message) {
++  const apiKey = (process.env.SETUP_COACH_API_KEY || process.env.OPENAI_API_KEY || '').trim();
++  if (!apiKey) return null;
++
++  const model = (process.env.SETUP_COACH_MODEL || 'gpt-4o-mini').trim();
++  const baseUrl = (process.env.SETUP_COACH_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '');
++
++  const system = [
++    'You are The Vibe Queen, owner of Queens Custom Creations (queenscustoms.shop).',
++    'You handcraft glitter tumblers and customs. Tone: warm, confident, playful, short (under 120 words).',
++    'Answer shop questions: pricing (customs from ~$40), shipping (~2–3 weeks), custom designs, bulk/party orders.',
++    'Do not invent order tracking numbers or claim a payment went through.',
++    'If they want a custom quote, invite them to leave name/email in the chat form or use Queens Studio.',
++    'Never ask for credit card numbers or passwords.',
++  ].join(' ');
++
++  const url = `${baseUrl}/chat/completions`;
++  const controller = new AbortController();
++  const timer = setTimeout(() => controller.abort(), 20000);
++
++  try {
++    const res = await fetch(url, {
++      method: 'POST',
++      headers: {
++        Authorization: `Bearer ${apiKey}`,
++        'Content-Type': 'application/json',
++      },
++      body: JSON.stringify({
++        model,
++        temperature: 0.6,
++        max_tokens: 280,
++        messages: [
++          { role: 'system', content: system },
++          { role: 'user', content: String(message || '').slice(0, 1500) },
++        ],
++      }),
++      signal: controller.signal,
++    });
++    if (!res.ok) {
++      const body = await res.text().catch(() => '');
++      throw new Error(`LLM HTTP ${res.status}: ${body.slice(0, 200)}`);
++    }
++    const data = await res.json();
++    const reply = data?.choices?.[0]?.message?.content?.trim();
++    if (!reply) throw new Error('Empty LLM reply');
++    return { reply, model, source: 'llm' };
++  } finally {
++    clearTimeout(timer);
++  }
++}
++
++async function answerQueenChat(message) {
++  const text = String(message || '').trim();
++  if (!text) {
++    return { error: 'Message required', status: 400 };
++  }
++
++  if (coachKeyConfigured()) {
++    try {
++      const llm = await tryOpenAIQueenChat(text);
++      if (llm?.reply) {
++        return { reply: llm.reply, source: 'llm', model: llm.model };
++      }
++    } catch (err) {
++      console.error('[queen-chat] LLM failed:', err.message || err);
++    }
++  }
++
++  return {
++    reply: ruleBasedQueenChat(text),
++    source: 'rules',
++    model: null,
++  };
++}
++
+ module.exports = {
+   answerSetupCoach,
++  answerQueenChat,
+   coachStatus,
+   ruleBasedSetupCoach,
++  ruleBasedQueenChat,
+   coachKeyConfigured,
+ };
+diff --git a/style.css b/style.css
+index e43dec9..ffb1861 100644
+--- a/style.css
++++ b/style.css
+@@ -203,21 +203,23 @@ h1,h2,h3,h4,h5 {
+   display: none;
+ }
+ 
+-/* Hamburger */
++/* Hamburger — high contrast so it never disappears on dark hero */
+ .ham-btn {
+   display: none;
+   align-items: center; justify-content: center;
+-  width: 40px; height: 40px;
++  width: 42px; height: 42px;
+   border-radius: var(--radius-sm);
+-  color: var(--text);
++  color: #fff;
++  background: rgba(255,26,140,0.18);
++  border: 1px solid rgba(255,26,140,0.55);
+   transition: background var(--dur-fast);
+   position: relative;
+-  z-index: 210;
++  z-index: 10010;
+   cursor: pointer;
+   -webkit-tap-highlight-color: rgba(255,26,140,0.2);
+   touch-action: manipulation;
+ }
+-.ham-btn:hover { background: var(--pink-pale); color: var(--pink); }
++.ham-btn:hover, .ham-btn:focus-visible { background: rgba(255,26,140,0.32); color: #fff; }
+ 
+ /* Search bar */
+ .search-bar {
+@@ -247,11 +249,11 @@ h1,h2,h3,h4,h5 {
+ }
+ #search-input::placeholder { color: var(--text-3); }
+ 
+-/* Mobile nav */
++/* Mobile nav — must sit ABOVE fixed header (9999) + announce bar (10001) */
+ .mob-overlay {
+   position: fixed; inset: 0;
+-  background: rgba(0,0,0,0.5);
+-  z-index: 290;
++  background: rgba(0,0,0,0.62);
++  z-index: 10020;
+   opacity: 0; pointer-events: none;
+   transition: opacity var(--dur-base);
+   backdrop-filter: blur(3px);
+@@ -260,39 +262,43 @@ h1,h2,h3,h4,h5 {
+ .mob-nav {
+   position: fixed;
+   top: 0; left: 0; bottom: 0;
+-  width: 300px;
+-  background: var(--bg);
+-  z-index: 300;
++  width: min(300px, 86vw);
++  background: #141418;
++  color: #fff;
++  z-index: 10030;
+   padding: 24px 20px;
+   display: flex;
+   flex-direction: column;
+   gap: 4px;
+-  transform: translateX(-100%);
++  transform: translateX(-105%);
+   transition: transform var(--dur-slow) var(--ease-out);
+   overflow-y: auto;
++  box-shadow: 8px 0 32px rgba(0,0,0,0.55);
++  border-right: 1px solid rgba(255,26,140,0.35);
+ }
+ .mob-nav.open { transform: translateX(0); }
++body.nav-open #queen-chat { visibility: hidden !important; pointer-events: none !important; }
+ .mob-close {
+   align-self: flex-end;
+   width: 36px; height: 36px;
+   border-radius: 50%;
+-  background: var(--grey-1);
++  background: rgba(255,255,255,0.1);
+   display: flex; align-items: center; justify-content: center;
+-  color: var(--text);
++  color: #fff;
+   margin-bottom: 16px;
++  border: 1px solid rgba(255,255,255,0.2);
+ }
+-[data-theme="dark"] .mob-close { background: var(--black-3); }
+ .mob-link {
+   font-family: var(--font-display);
+-  font-size: 1.3rem;
++  font-size: 1.2rem;
+   font-weight: 600;
+-  color: var(--text);
++  color: #fff;
+   padding: 12px 0;
+-  border-bottom: 1px solid var(--border);
++  border-bottom: 1px solid rgba(255,255,255,0.12);
+   display: block;
+   transition: color var(--dur-fast);
+ }
+-.mob-link:hover { color: var(--pink); }
++.mob-link:hover { color: #FF1A8C; }
+ .mob-tiktok-link {
+   margin-top: auto;
+   padding: 14px 20px;
+@@ -4631,8 +4637,14 @@ body { padding-top: calc(36px + 74px) !important; }
+   position: fixed;
+   bottom: 24px;
+   left: 20px;
+-  z-index: 1000;
++  z-index: 11050; /* above vibe player / most overlays; below age-gate if present */
+   font-family: var(--font-body);
++  pointer-events: none; /* let page clicks pass; children re-enable */
++}
++.queen-chat .queen-chat-fab,
++.queen-chat .queen-chat-panel,
++.queen-chat .queen-chat-tip {
++  pointer-events: auto;
+ }
+ .queen-chat-fab {
+   width: 64px;
+@@ -4863,13 +4875,14 @@ body { padding-top: calc(36px + 74px) !important; }
+ }
+ 
+ @media (max-width: 640px) {
+-  .queen-chat { bottom: 16px; left: 12px; }
+-  .queen-chat-fab { width: 58px; height: 58px; }
++  /* Lift above iOS Safari bottom chrome so the avatar stays tappable */
++  .queen-chat { bottom: 88px; left: 12px; }
++  .queen-chat-fab { width: 60px; height: 60px; }
+   .queen-chat-tip { display: none; }
+   .queen-chat-panel {
+-    bottom: 70px;
++    bottom: 74px;
+     width: min(340px, calc(100vw - 24px));
+   }
+   /* Keep clear of vibe player on the right */
+-  .vibe-player { bottom: 16px; right: 12px; }
++  .vibe-player { bottom: 88px; right: 12px; }
+ }

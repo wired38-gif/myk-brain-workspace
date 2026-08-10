@@ -1,0 +1,1463 @@
+diff --git a/admin/index.html b/admin/index.html
+index 182c35c..0129355 100644
+--- a/admin/index.html
++++ b/admin/index.html
+@@ -149,21 +149,80 @@
+     .page.active { display: block; }
+ 
+     /* Setup wizard */
+-    .setup-wrap { max-width: 1100px; margin: 0 auto; }
++    .setup-wrap { max-width: 1280px; margin: 0 auto; }
+     .progress-bar { display: flex; gap: 4px; margin-bottom: 28px; }
+     .progress-step { flex: 1; height: 4px; background: var(--surface-2); border-radius: 2px; transition: background 0.3s; }
+     .progress-step.done { background: var(--pink); }
+     .progress-step.current { background: var(--pink-glow); }
+-    .wizard-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
++    .wizard-layout { display: grid; grid-template-columns: 1fr minmax(320px, 400px); gap: 24px; align-items: start; }
++    .wizard-layout.coach-wide { grid-template-columns: 1fr minmax(360px, 440px); }
+     .wizard-main { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; }
+     .wizard-main h2 { font-family: var(--font-display); font-size: 1.4rem; margin-bottom: 8px; }
+     .wizard-main .lead { color: var(--text-2); font-size: 0.9rem; margin-bottom: 24px; line-height: 1.5; }
+     .wizard-nav { display: flex; justify-content: space-between; margin-top: 28px; gap: 12px; flex-wrap: wrap; }
+-    .ai-panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; }
+-    .ai-panel-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
++    .ai-panel {
++      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
++      padding: 0; position: sticky; top: 84px; max-height: calc(100vh - 100px); display: flex; flex-direction: column; overflow: hidden;
++    }
++    .ai-panel-header { display: flex; align-items: center; gap: 10px; padding: 18px 20px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+     .ai-panel-header span { font-size: 1.5rem; }
+     .ai-panel-header h3 { font-family: var(--font-display); font-size: 0.95rem; }
+-    .ai-tip { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; padding: 14px; background: var(--pink-dim); border-radius: var(--radius-sm); border-left: 3px solid var(--pink); }
++    .ai-panel-header .coach-sub { font-size: 0.72rem; color: var(--text-3); display: block; margin-top: 2px; }
++    .ai-tip { font-size: 0.85rem; color: var(--text-2); line-height: 1.6; padding: 14px; background: var(--pink-dim); border-radius: var(--radius-sm); border-left: 3px solid var(--pink); margin: 14px 16px 0; }
++    .coach-body { padding: 12px 16px 16px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 12px; }
++    .coach-guide {
++      background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px;
++    }
++    .coach-guide h4 { font-family: var(--font-display); font-size: 0.88rem; margin-bottom: 6px; color: #fff; }
++    .coach-guide .plain { font-size: 0.8rem; color: var(--text-2); line-height: 1.5; margin-bottom: 10px; }
++    .coach-guide ol { margin: 0; padding-left: 1.15rem; color: var(--text-2); font-size: 0.78rem; line-height: 1.55; }
++    .coach-guide ol li { margin-bottom: 8px; }
++    .coach-guide ol li strong { color: #fff; font-weight: 600; }
++    .coach-open-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
++    .btn-open-site {
++      display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px;
++      border: 1px solid var(--pink); background: rgba(255,26,140,0.14); color: #fff;
++      font-family: var(--font-display); font-size: 0.78rem; font-weight: 600; cursor: pointer; text-decoration: none;
++    }
++    .btn-open-site:hover { background: rgba(255,26,140,0.28); }
++    .btn-guide {
++      display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px;
++      border: 1px solid var(--border); background: var(--surface); color: var(--text-2);
++      font-size: 0.75rem; font-weight: 600; cursor: pointer;
++    }
++    .btn-guide:hover, .btn-guide.active { border-color: var(--pink); color: #fff; background: rgba(255,26,140,0.12); }
++    .coach-iframe-note {
++      font-size: 0.72rem; color: var(--text-3); line-height: 1.45; margin-top: 8px;
++      padding: 8px 10px; background: rgba(255,255,255,0.03); border-radius: 8px;
++    }
++    .coach-chat {
++      border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg);
++      display: flex; flex-direction: column; min-height: 200px; max-height: 280px;
++    }
++    .coach-chat-log { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
++    .coach-bubble {
++      font-size: 0.78rem; line-height: 1.5; padding: 9px 11px; border-radius: 12px; max-width: 95%;
++    }
++    .coach-bubble.bot { background: var(--pink-dim); color: var(--text); border: 1px solid rgba(255,26,140,0.25); align-self: flex-start; }
++    .coach-bubble.user { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); align-self: flex-end; }
++    .coach-chat-form { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--border); }
++    .coach-chat-form input {
++      flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border);
++      background: var(--surface); color: var(--text); font-size: 0.8rem;
++    }
++    .coach-chat-form button {
++      padding: 8px 12px; border-radius: 8px; border: none; background: var(--pink); color: #fff;
++      font-size: 0.75rem; font-weight: 700; cursor: pointer; font-family: var(--font-display);
++    }
++    .coach-chat-form button:disabled { opacity: 0.5; cursor: wait; }
++    .coach-quick { display: flex; flex-wrap: wrap; gap: 6px; }
++    .coach-quick button {
++      padding: 5px 10px; border-radius: 999px; border: 1px solid var(--border); background: transparent;
++      color: var(--text-2); font-size: 0.7rem; cursor: pointer;
++    }
++    .coach-quick button:hover { border-color: var(--pink); color: #fff; }
++    .plain-blurb { font-size: 0.8rem; color: var(--text-2); line-height: 1.5; margin: -4px 0 12px; }
++    .integ-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+     .integration-grid { display: grid; gap: 20px; }
+     .integration-block { padding: 20px; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border); }
+     .integration-block h4 { font-family: var(--font-display); font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+@@ -226,6 +285,82 @@
+     #toast.success { border-color: var(--green); color: var(--green); }
+     #toast.error { border-color: var(--red); color: var(--red); }
+ 
++    /* Admin Queen navigator (find / jump) */
++    body:not(.authed) .aq-nav { display: none !important; }
++    .aq-nav { position: fixed; bottom: 22px; left: 22px; z-index: 8000; font-family: var(--font-body); }
++    .main.setup-mode ~ .aq-nav, body.authed .aq-nav { /* keep visible in both modes */ }
++    .aq-fab {
++      width: 58px; height: 58px; border-radius: 50%; border: 2px solid var(--pink);
++      background: var(--surface); padding: 0; cursor: pointer; position: relative;
++      box-shadow: 0 8px 28px rgba(0,0,0,0.45); overflow: hidden; display: grid; place-items: center;
++      color: #fff; font-size: 1.4rem;
++    }
++    .aq-fab img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
++    .aq-fab-pulse {
++      position: absolute; inset: -4px; border-radius: 50%; border: 2px solid var(--pink);
++      animation: aq-pulse 2.4s ease-out infinite; pointer-events: none;
++    }
++    @keyframes aq-pulse {
++      0% { transform: scale(0.92); opacity: 0.7; }
++      70% { transform: scale(1.18); opacity: 0; }
++      100% { opacity: 0; }
++    }
++    .aq-tip {
++      position: absolute; left: 68px; bottom: 14px; white-space: nowrap;
++      background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
++      font-size: 0.78rem; padding: 8px 12px; border-radius: 999px; opacity: 0; pointer-events: none;
++      transition: opacity 0.25s; box-shadow: 0 6px 20px rgba(0,0,0,0.35);
++    }
++    .aq-nav:not(.open) .aq-tip.show { opacity: 1; }
++    .aq-panel {
++      position: absolute; bottom: 70px; left: 0; width: min(360px, calc(100vw - 32px));
++      background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
++      box-shadow: 0 16px 48px rgba(0,0,0,0.55); overflow: hidden;
++      transform: translateY(12px); opacity: 0; pointer-events: none; transition: all 0.2s;
++      display: flex; flex-direction: column; max-height: min(520px, calc(100vh - 120px));
++    }
++    .aq-nav.open .aq-panel { transform: translateY(0); opacity: 1; pointer-events: auto; }
++    .aq-header {
++      display: flex; align-items: center; gap: 10px; padding: 12px 14px;
++      border-bottom: 1px solid var(--border); background: rgba(255,26,140,0.08);
++    }
++    .aq-header img { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid var(--pink); }
++    .aq-header-text { flex: 1; min-width: 0; }
++    .aq-header-text strong { display: block; font-family: var(--font-display); font-size: 0.92rem; }
++    .aq-header-text span { font-size: 0.72rem; color: var(--text-3); }
++    .aq-close { background: none; border: none; color: var(--text-2); font-size: 1.4rem; cursor: pointer; line-height: 1; }
++    .aq-messages { padding: 12px; overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 8px; min-height: 160px; }
++    .aq-bubble { font-size: 0.8rem; line-height: 1.5; padding: 9px 11px; border-radius: 12px; max-width: 95%; }
++    .aq-bubble.queen { align-self: flex-start; background: var(--pink-dim); border: 1px solid rgba(255,26,140,0.28); }
++    .aq-bubble.user { align-self: flex-end; background: var(--surface-2); border: 1px solid var(--border); }
++    .aq-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 10px; }
++    .aq-chip {
++      border: 1px solid var(--border); background: transparent; color: var(--text-2);
++      font-size: 0.7rem; padding: 5px 10px; border-radius: 999px; cursor: pointer;
++    }
++    .aq-chip:hover { border-color: var(--pink); color: #fff; }
++    .aq-form { display: flex; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--border); }
++    .aq-form input {
++      flex: 1; padding: 9px 11px; border-radius: 10px; border: 1px solid var(--border);
++      background: var(--bg); color: var(--text); font-size: 0.82rem;
++    }
++    .aq-send {
++      border: none; background: var(--pink); color: #fff; border-radius: 10px;
++      padding: 0 14px; font-weight: 700; font-family: var(--font-display); font-size: 0.78rem; cursor: pointer;
++    }
++    .aq-hits { display: grid; gap: 6px; }
++    .aq-hit {
++      text-align: left; border: 1px solid var(--border); background: var(--surface-2);
++      border-radius: 10px; padding: 10px 12px; cursor: pointer; color: var(--text);
++    }
++    .aq-hit:hover { border-color: var(--pink); background: rgba(255,26,140,0.1); }
++    .aq-hit strong { display: block; font-size: 0.8rem; font-family: var(--font-display); margin-bottom: 2px; }
++    .aq-hit span { display: block; font-size: 0.72rem; color: var(--text-2); line-height: 1.4; }
++    @media (max-width: 768px) {
++      .aq-nav { bottom: 16px; left: 12px; }
++      .aq-tip { display: none; }
++    }
++
+     /* Mobile */
+     .ham { display: none; background: none; border: none; color: var(--text); cursor: pointer; padding: 4px; }
+     .mob-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; display: none; }
+@@ -377,11 +512,37 @@
+       <div class="step-labels" id="wizard-step-labels"></div>
+       <div class="wizard-layout">
+         <div class="wizard-main" id="wizard-main"></div>
+-        <div class="ai-panel">
+-          <div class="ai-panel-header"><span>👑</span><h3>Do this next</h3></div>
++        <aside class="ai-panel" id="setup-coach-panel" aria-label="Setup Coach">
++          <div class="ai-panel-header">
++            <span>👑</span>
++            <div>
++              <h3>Setup Coach</h3>
++              <span class="coach-sub">Plain-English help · no tech speak</span>
++            </div>
++          </div>
+           <div class="ai-tip" id="ai-tip"></div>
+-          <div id="setup-status-panel" style="margin-top:16px"></div>
+-        </div>
++          <div class="coach-body">
++            <div class="coach-guide" id="coach-guide">
++              <h4 id="coach-guide-title">Pick a service</h4>
++              <p class="plain" id="coach-guide-plain">Tap <strong>Show me how</strong> next to Etsy, Stripe, Google, etc. I’ll walk you through it like a friend sitting next to you.</p>
++              <ol id="coach-guide-steps"></ol>
++              <div class="coach-open-row" id="coach-open-row"></div>
++              <p class="coach-iframe-note">Their websites (Stripe, Etsy, Google…) won’t load inside this panel for security — that’s normal. I’ll open them in a side window and keep coaching you here so you never get lost.</p>
++            </div>
++            <div>
++              <p style="font-size:0.72rem;color:var(--text-3);margin-bottom:6px;text-transform:uppercase;letter-spacing:0.06em">Ask the coach</p>
++              <div class="coach-quick" id="coach-quick"></div>
++              <div class="coach-chat" style="margin-top:8px">
++                <div class="coach-chat-log" id="coach-chat-log"></div>
++                <form class="coach-chat-form" id="coach-chat-form">
++                  <input type="text" id="coach-chat-input" placeholder="e.g. What is an API key?" autocomplete="off"/>
++                  <button type="submit" id="coach-chat-send">Ask</button>
++                </form>
++              </div>
++            </div>
++            <div id="setup-status-panel"></div>
++          </div>
++        </aside>
+       </div>
+     </div>
+   </div>
+@@ -468,6 +629,7 @@
+ 
+ <div id="toast"></div>
+ 
++<script src="queen-nav.js"></script>
+ <script>(function () {
+   'use strict';
+ 
+@@ -475,17 +637,156 @@
+   const ORDER_STATUSES = ['pending','confirmed','in_progress','shipped','delivered','cancelled'];
+   const WIZARD_STEPS = ['Welcome','E-Commerce','Payments','Logins','Email','Products','Admins','Complete'];
+   const AI_TIPS = [
+-    'Everything happens in this Setup screen. Open the links we give you, copy your keys, paste them here, then tap Save — the shop updates by itself.',
+-    'Optional for later: Etsy / Amazon / TikTok. You can skip this step and come back anytime from the Setup toggle.',
+-    'For Stripe: paste your Connect Client ID + Secret Key, then Save. We’ll open Stripe automatically so you can approve the connection. PayPal is paste-and-Save only.',
+-    'Want shoppers to use Google / Apple / Facebook? Create those apps in your own developer accounts, paste the keys, turn Enable ON, then Save — buttons appear on the shop login right away.',
+-    'Email is optional. Paste your Mailchimp / Klaviyo / SendGrid key and Save when you’re ready for newsletters.',
+-    'Adjust prices or inventory if you want — Save on each row. Or Continue to skip.',
+-    'You can add another admin later. Continue when you’re ready.',
+-    'Setup is finished. Operations is your daily dashboard for orders and messages. You can reopen Setup anytime to change keys.'
++    'I’m your Setup Coach. Ask me anything — “what’s an API key?” — and I’ll answer in plain English. Tap Show me how on any service.',
++    'Marketplaces are optional. Skip if you’re not on Etsy/Amazon/TikTok yet. Tap Show me how for a click-by-click walkthrough.',
++    'Stripe lets customers pay you. Tap Show me how → Open Stripe. Copy your keys, paste here, Save — we’ll finish the connection for you.',
++    'Google / Apple / Facebook let shoppers sign in with one tap. You create those apps in your own accounts. Tap Show me how for the easiest path (Google).',
++    'Email is optional. Mailchimp is the friendliest if you’re new. Tap Show me how when ready.',
++    'Quick price/inventory tweaks. Or Continue — you can edit products anytime in Operations.',
++    'Optional: add a helper who can also log into this admin. Or Continue.',
++    'You’re set. Operations is daily orders & messages. Reopen Setup anytime if you need the coach again.'
+   ];
+   const STEP_INDEX = { welcome: 0, ecommerce: 1, payments: 2, logins: 3, email: 4, products: 5, admins: 6, complete: 7 };
+ 
++  /** Layman walkthroughs — what to click, where to look, what to paste */
++  const SETUP_GUIDES = {
++    overview: {
++      title: 'How Setup works',
++      plain: 'Think of this like filling out a form with a helper beside you. Other websites hold secret passwords (keys) for your shop. You copy them, paste them here, and tap Save.',
++      steps: [
++        'Pick a service below (or on the left) and tap <strong>Show me how</strong>.',
++        'Tap <strong>Open their site</strong> — a window opens next to this panel.',
++        'Follow the numbered steps. When you see the key, copy it.',
++        'Paste it in the boxes on the left, then tap <strong>Save</strong>.',
++        'Stuck? Type a question in the chat — e.g. “where is Shop ID?”'
++      ],
++      openUrl: '',
++      openLabel: '',
++      quick: ['What is an API key?', 'Can I skip this?', 'Where do I paste things?']
++    },
++    etsy: {
++      title: 'Etsy — get your keys',
++      plain: 'An “API key” is just a secret password Etsy gives apps so they can read your shop orders. You’re not buying anything — you’re connecting your own Etsy shop.',
++      steps: [
++        'Tap <strong>Open Etsy Developers</strong> (button below). Sign in with the same email you use for your Etsy shop.',
++        'If Etsy asks you to create an app, name it something simple like <em>Queens Customs Shop</em>.',
++        'Find the <strong>Keystring</strong> or <strong>API Key</strong> — it looks like a long random code. Copy it into <strong>API Key</strong> on the left.',
++        'Your <strong>Shop ID</strong> is a number for your shop. In Etsy: Shop Manager → Settings, or from your shop URL / sellers dashboard. Paste that number into <strong>Shop ID</strong>.',
++        'Come back here → tap <strong>Save &amp; Continue</strong>. You can skip Etsy entirely if you don’t sell there yet.'
++      ],
++      openUrl: 'https://www.etsy.com/developers/your-apps',
++      openLabel: 'Open Etsy Developers',
++      quick: ['What is Shop ID?', 'I don’t sell on Etsy', 'I can’t find the API key']
++    },
++    amazon: {
++      title: 'Amazon — seller connection',
++      plain: 'Amazon used to call this “MWS.” Today most sellers use Seller Central. A Seller ID is like your Amazon store’s username code. Only do this if you already sell on Amazon.',
++      steps: [
++        'Tap <strong>Open Amazon Seller Central</strong> and sign in.',
++        'Find your <strong>Seller ID</strong> under Settings → Account Info (sometimes labeled Merchant Token / Seller ID). Copy it into <strong>Seller ID</strong> on the left.',
++        'If Amazon still shows an <strong>MWS Auth Token</strong> for older connections, paste it into <strong>MWS Token</strong>. If you only have newer SP-API credentials, leave the token blank for now and ask the coach — we’ll note what’s available.',
++        'Save when done — or skip Amazon if you don’t use it.'
++      ],
++      openUrl: 'https://sellercentral.amazon.com/',
++      openLabel: 'Open Amazon Seller Central',
++      quick: ['I don’t sell on Amazon', 'What’s an MWS token?', 'Skip Amazon']
++    },
++    tiktok: {
++      title: 'TikTok Shop — app keys',
++      plain: 'TikTok Shop lets people buy from videos. “App Key” and “App Secret” are two passwords TikTok gives your seller app — like a username and password for the connection.',
++      steps: [
++        'Tap <strong>Open TikTok Shop Partner</strong> and sign in with your TikTok Shop seller account.',
++        'Create or open an app for your shop.',
++        'Copy <strong>App Key</strong> into the App Key box on the left.',
++        'Copy <strong>App Secret</strong> into App Secret (keep this private — don’t post it online).',
++        'Save here — or skip if you’re not on TikTok Shop yet.'
++      ],
++      openUrl: 'https://partner.tiktokshop.com/',
++      openLabel: 'Open TikTok Shop Partner',
++      quick: ['I don’t use TikTok Shop', 'What’s App Secret?', 'Skip for later']
++    },
++    stripe: {
++      title: 'Stripe — take card payments',
++      plain: 'Stripe is the company that moves money from a customer’s card into your bank. The “keys” are passwords that prove this website is allowed to charge on your behalf.',
++      steps: [
++        'Tap <strong>Open Stripe</strong> → create a free account with your business email (or sign in).',
++        'In Stripe: click <strong>Developers</strong> (top) → <strong>API keys</strong>.',
++        'Copy the <strong>Publishable key</strong> (starts with pk_) and the <strong>Secret key</strong> (starts with sk_). Paste both on the left.',
++        'Optional but nice: Settings → <strong>Connect</strong> → copy <strong>client_id</strong> (starts with ca_) into Connect Client ID.',
++        'Tap <strong>Save &amp; Activate</strong>. If Connect is ready, Stripe opens so you can click Approve — then cards work on your shop.'
++      ],
++      openUrl: 'https://dashboard.stripe.com/apikeys',
++      openLabel: 'Open Stripe API keys',
++      quick: ['What’s a Secret key?', 'Is Stripe free?', 'I only want PayPal']
++    },
++    paypal: {
++      title: 'PayPal — checkout button',
++      plain: 'PayPal lets people pay with their PayPal balance or linked cards. You need a “Client ID” and “Secret” from PayPal’s developer page — still just two passwords for your shop.',
++      steps: [
++        'Tap <strong>Open PayPal Developer</strong> and log in with your PayPal business email.',
++        'Go to <strong>Apps &amp; Credentials</strong> → create a Live app (name it Queens Customs).',
++        'Copy <strong>Client ID</strong> and <strong>Secret</strong> into the boxes on the left.',
++        'Tap Save — PayPal checkout turns on automatically.'
++      ],
++      openUrl: 'https://developer.paypal.com/dashboard/applications',
++      openLabel: 'Open PayPal Developer',
++      quick: ['Live vs Sandbox?', 'Do I need Stripe AND PayPal?']
++    },
++    google: {
++      title: 'Google Sign-In (easiest social login)',
++      plain: 'This lets shoppers tap “Continue with Google” instead of making a new password. You create a free Google Cloud “OAuth client” — think of it as a name tag for your website.',
++      steps: [
++        'Tap <strong>Open Google Credentials</strong>. Sign in with your Google account.',
++        'If asked, create a project (name: Queens Customs is fine).',
++        'Create credentials → <strong>OAuth client ID</strong> → type <strong>Web application</strong>.',
++        'Under Authorized redirect URIs, add exactly: <code>https://queenscustoms.shop/api/auth/google/callback</code>',
++        'Copy Client ID + Client Secret into the Google boxes → turn <strong>Enable</strong> ON → Save.'
++      ],
++      openUrl: 'https://console.cloud.google.com/apis/credentials',
++      openLabel: 'Open Google Credentials',
++      quick: ['What’s a redirect URI?', 'Do I need Apple too?']
++    },
++    apple: {
++      title: 'Apple Sign-In',
++      plain: 'Same idea as Google, but through Apple. Needs an Apple Developer account (paid yearly). Skip unless you really want the Apple button.',
++      steps: [
++        'Open <strong>Apple Developer</strong> → Certificates, Identifiers &amp; Profiles.',
++        'Create a <strong>Services ID</strong> and enable Sign in with Apple. Return URL: <code>https://queenscustoms.shop/api/auth/apple/callback</code>',
++        'Create a Key with Sign in with Apple, download the .p8 file, paste its text into Private Key.',
++        'Fill Team ID + Key ID → Enable ON → Save.'
++      ],
++      openUrl: 'https://developer.apple.com/account/resources/identifiers/list',
++      openLabel: 'Open Apple Developer',
++      quick: ['Can I skip Apple?', 'What’s a .p8 file?']
++    },
++    facebook: {
++      title: 'Facebook Sign-In',
++      plain: 'Lets shoppers use Facebook to log in. You create a free Meta (Facebook) app and turn on Facebook Login.',
++      steps: [
++        'Tap <strong>Open Meta for Developers</strong> → Create App → type Consumer / Business as prompted.',
++        'Add product <strong>Facebook Login</strong>. Set Valid OAuth Redirect URI to: <code>https://queenscustoms.shop/api/auth/facebook/callback</code>',
++        'Copy <strong>App ID</strong> and <strong>App Secret</strong> → Enable ON → Save.'
++      ],
++      openUrl: 'https://developers.facebook.com/apps/',
++      openLabel: 'Open Meta for Developers',
++      quick: ['Is Facebook required?', 'App Secret looks blank']
++    },
++    email: {
++      title: 'Email / newsletters',
++      plain: 'Optional. Mailchimp (or similar) sends newsletters. An API key lets this shop add buyers to your email list — only if you want that.',
++      steps: [
++        'Pick Mailchimp if you’re new — tap Open Mailchimp → Account → Extras → API keys → Create.',
++        'Paste the key here. List ID is the audience/list you want new signups added to.',
++        'Save when ready, or Continue to skip.'
++      ],
++      openUrl: 'https://admin.mailchimp.com/account/api/',
++      openLabel: 'Open Mailchimp API keys',
++      quick: ['Do I need this now?', 'Mailchimp vs Klaviyo']
++    }
++  };
++
++  const STEP_DEFAULT_GUIDE = ['overview', 'etsy', 'stripe', 'google', 'email', 'overview', 'overview', 'overview'];
++
+   let token = localStorage.getItem(TOKEN_KEY);
+   let currentUser = null;
+   let currentMode = 'operations';
+@@ -498,6 +799,11 @@
+   let wizardStep = 0;
+   let integrations = {};
+   let wizardProducts = [];
++  let activeGuideId = 'overview';
++  let coachHelperWin = null;
++  let lastCoachWizardStep = -1;
++  let coachBootstrapped = false;
++  let pendingGuideId = null;
+ 
+   const $ = (id) => document.getElementById(id);
+   const hide = (el) => el && el.classList.add('hidden');
+@@ -590,6 +896,7 @@
+     hide($('login-screen'));
+     show($('main-app'));
+     document.body.classList.add('authed');
++    initAdminQueenNav();
+     if (consumeSetupQuery()) return;
+     try {
+       await loadIntegrations();
+@@ -642,6 +949,7 @@
+       show($('setup-content'));
+       sidebar.classList.add('hidden');
+       main.classList.add('setup-mode');
++      if ($('page-title')) $('page-title').textContent = 'Setup Wizard';
+       loadIntegrations().then(() => renderWizard()).catch(() => renderWizard());
+     } else {
+       show($('ops-content'));
+@@ -653,6 +961,51 @@
+     closeSidebar();
+   }
+ 
++  /** Jump from Admin Queen navigator (Operations pages or Setup steps). */
++  function navigateAdminTarget(target) {
++    target = target || {};
++    if (target.mode === 'setup' || typeof target.step === 'number' || target.guide) {
++      if (typeof target.step === 'number') {
++        wizardStep = target.step;
++        lastCoachWizardStep = -1; // force coach guide refresh for new step
++      }
++      if (target.guide) pendingGuideId = target.guide;
++      setMode('setup');
++      return;
++    }
++    setMode('operations');
++    if (target.page) showPage(target.page);
++  }
++
++  async function askAdminCoach(message) {
++    try {
++      const data = await api('/api/admin/setup-coach', {
++        method: 'POST',
++        body: {
++          message: message,
++          guideId: activeGuideId || 'overview',
++          wizardStep: currentMode === 'setup' ? wizardStep : -1,
++          context: 'admin-nav',
++        }
++      });
++      return data.replyHtml || data.reply || '';
++    } catch (e) {
++      return e.message || 'Coach unavailable right now.';
++    }
++  }
++
++  function initAdminQueenNav() {
++    if (!window.QCCAdminQueen || typeof window.QCCAdminQueen.init !== 'function') return;
++    window.QCCAdminQueen.init({
++      navigate: navigateAdminTarget,
++      askSetupCoach: function (q) {
++        if (currentMode !== 'setup') setMode('setup');
++        setTimeout(() => { if (typeof askCoach === 'function') askCoach(q); }, 500);
++      },
++      askAdminCoach: askAdminCoach,
++    });
++  }
++
+   document.querySelectorAll('.mode-btn').forEach(btn => {
+     btn.addEventListener('click', () => setMode(btn.dataset.mode));
+   });
+@@ -944,10 +1297,194 @@
+     const bar = $('wizard-progress');
+     const labels = $('wizard-step-labels');
+     bar.innerHTML = WIZARD_STEPS.map((_, i) => '<div class="progress-step' + (i < wizardStep ? ' done' : '') + (i === wizardStep ? ' current' : '') + '"></div>').join('');
+-    labels.innerHTML = WIZARD_STEPS.map((s, i) => '<span>' + s + '</span>').join('');
++    labels.innerHTML = WIZARD_STEPS.map((s) => '<span>' + s + '</span>').join('');
+     $('ai-tip').textContent = AI_TIPS[wizardStep] || '';
+     const side = $('setup-status-panel');
+     if (side) side.innerHTML = '<p style="font-size:0.75rem;color:var(--text-3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em">Live on your shop</p>' + statusChecklistHtml();
++    if (pendingGuideId && SETUP_GUIDES[pendingGuideId]) {
++      const g = pendingGuideId;
++      pendingGuideId = null;
++      lastCoachWizardStep = wizardStep;
++      setActiveGuide(g, { silent: false });
++    } else if (lastCoachWizardStep !== wizardStep) {
++      lastCoachWizardStep = wizardStep;
++      setActiveGuide(STEP_DEFAULT_GUIDE[wizardStep] || 'overview', { silent: true });
++    } else {
++      renderCoachGuide();
++      renderCoachQuick();
++    }
++    if (!coachBootstrapped) {
++      coachBootstrapped = true;
++      const log = $('coach-chat-log');
++      if (log && !log.children.length) {
++        appendCoachBubble('bot', 'Hi Queen 👑 — I’m your Setup Coach. I explain everything in everyday words. Tap <strong>Show me how</strong> on any service, or ask me something like “What is an API key?” Use the pink avatar (bottom-left) anytime to <strong>find</strong> a page or setting.');
++      }
++    }
++  }
++
++  function setActiveGuide(id, opts) {
++    opts = opts || {};
++    activeGuideId = SETUP_GUIDES[id] ? id : 'overview';
++    renderCoachGuide();
++    renderCoachQuick();
++    document.querySelectorAll('[data-guide]').forEach(btn => {
++      btn.classList.toggle('active', btn.dataset.guide === activeGuideId);
++    });
++    if (!opts.silent) {
++      const g = SETUP_GUIDES[activeGuideId];
++      appendCoachBubble('bot', 'Let’s do <strong>' + esc(g.title) + '</strong>. ' + g.plain);
++    }
++  }
++
++  function renderCoachGuide() {
++    const g = SETUP_GUIDES[activeGuideId] || SETUP_GUIDES.overview;
++    const title = $('coach-guide-title');
++    const plain = $('coach-guide-plain');
++    const steps = $('coach-guide-steps');
++    const openRow = $('coach-open-row');
++    if (!title) return;
++    title.textContent = g.title;
++    plain.innerHTML = g.plain;
++    steps.innerHTML = (g.steps || []).map(s => '<li>' + s + '</li>').join('');
++    if (g.openUrl) {
++      openRow.innerHTML =
++        '<button type="button" class="btn-open-site" id="coach-open-site" data-url="' + escAttr(g.openUrl) + '">↗ ' + esc(g.openLabel || 'Open their site') + '</button>' +
++        '<button type="button" class="btn-guide" id="coach-focus-helper">Focus helper window</button>';
++      const openBtn = $('coach-open-site');
++      if (openBtn) openBtn.addEventListener('click', () => openHelperSite(openBtn.dataset.url, g.openLabel));
++      const focusBtn = $('coach-focus-helper');
++      if (focusBtn) focusBtn.addEventListener('click', () => {
++        if (coachHelperWin && !coachHelperWin.closed) coachHelperWin.focus();
++        else if (g.openUrl) openHelperSite(g.openUrl, g.openLabel);
++      });
++    } else {
++      openRow.innerHTML = '';
++    }
++  }
++
++  function renderCoachQuick() {
++    const wrap = $('coach-quick');
++    if (!wrap) return;
++    const g = SETUP_GUIDES[activeGuideId] || SETUP_GUIDES.overview;
++    const qs = g.quick || ['What is an API key?', 'Can I skip this?'];
++    wrap.innerHTML = qs.map(q => '<button type="button" data-coach-q="' + escAttr(q) + '">' + esc(q) + '</button>').join('');
++    wrap.querySelectorAll('[data-coach-q]').forEach(btn => {
++      btn.addEventListener('click', () => askCoach(btn.dataset.coachQ));
++    });
++  }
++
++  function openHelperSite(url, label) {
++    if (!url) return;
++    // Named window acts as a "side browser" the coach can keep pointing at
++    coachHelperWin = window.open(url, 'qcc_setup_helper', 'noopener,width=1100,height=800');
++    appendCoachBubble('bot', 'I opened <strong>' + esc(label || 'their site') + '</strong> in a helper window beside you. Keep this Setup panel open — follow the numbered steps in the guide above, then paste what you copy into the boxes on the left.');
++    try { if (coachHelperWin) coachHelperWin.focus(); } catch (_) { /* ignore */ }
++  }
++
++  function appendCoachBubble(role, html) {
++    const log = $('coach-chat-log');
++    if (!log) return;
++    const div = document.createElement('div');
++    div.className = 'coach-bubble ' + (role === 'user' ? 'user' : 'bot');
++    div.innerHTML = html;
++    log.appendChild(div);
++    log.scrollTop = log.scrollHeight;
++  }
++
++  async function askCoach(question) {
++    const q = (question || '').trim();
++    if (!q) return;
++    appendCoachBubble('user', esc(q));
++    const send = $('coach-chat-send');
++    if (send) send.disabled = true;
++    try {
++      const data = await api('/api/admin/setup-coach', {
++        method: 'POST',
++        body: { message: q, guideId: activeGuideId, wizardStep: wizardStep }
++      });
++      appendCoachBubble('bot', data.replyHtml || esc(data.reply || 'I’m here — try asking another way.'));
++      if (data.suggestGuide && SETUP_GUIDES[data.suggestGuide]) {
++        setActiveGuide(data.suggestGuide, { silent: true });
++      }
++      if (data.openUrl) {
++        const openRow = $('coach-open-row');
++        // nudge: offer open
++        appendCoachBubble('bot', '<button type="button" class="btn-open-site coach-inline-open" data-url="' + escAttr(data.openUrl) + '">↗ Open ' + esc(data.openLabel || 'their site') + '</button>');
++        const inline = logLastCoachOpen();
++        if (inline) inline.addEventListener('click', () => openHelperSite(inline.dataset.url, data.openLabel));
++      }
++    } catch (e) {
++      appendCoachBubble('bot', esc(localCoachFallback(q)));
++    } finally {
++      if (send) send.disabled = false;
++    }
++  }
++
++  function logLastCoachOpen() {
++    const log = $('coach-chat-log');
++    if (!log) return null;
++    const buttons = log.querySelectorAll('.coach-inline-open');
++    return buttons.length ? buttons[buttons.length - 1] : null;
++  }
++
++  function localCoachFallback(q) {
++    const t = q.toLowerCase();
++    if (t.includes('api key') || t.includes('what is')) {
++      return 'An API key is just a secret password a website (like Etsy or Stripe) gives you so this shop can talk to your account. You copy it from their site and paste it in the box — you’re not buying anything.';
++    }
++    if (t.includes('skip')) return 'Yes — you can skip any optional step. Tap Save & Continue with empty boxes, or use Back later from the Setup toggle.';
++    return 'Try tapping Show me how on the service you’re stuck on, or ask something like “Where is my Shop ID?”';
++  }
++
++  function wireCoachUi() {
++    const form = $('coach-chat-form');
++    if (form && !form.dataset.bound) {
++      form.dataset.bound = '1';
++      form.addEventListener('submit', (e) => {
++        e.preventDefault();
++        const input = $('coach-chat-input');
++        const q = input ? input.value : '';
++        if (input) input.value = '';
++        askCoach(q);
++      });
++    }
++    document.querySelectorAll('[data-guide]').forEach(btn => {
++      btn.addEventListener('click', () => {
++        const id = btn.dataset.guide;
++        setActiveGuide(id);
++        if (btn.dataset.open === '1' && SETUP_GUIDES[id] && SETUP_GUIDES[id].openUrl) {
++          openHelperSite(SETUP_GUIDES[id].openUrl, SETUP_GUIDES[id].openLabel);
++        }
++      });
++    });
++    document.querySelectorAll('[data-open-guide]').forEach(btn => {
++      btn.addEventListener('click', () => {
++        const id = btn.dataset.openGuide;
++        setActiveGuide(id, { silent: true });
++        if (SETUP_GUIDES[id] && SETUP_GUIDES[id].openUrl) {
++          openHelperSite(SETUP_GUIDES[id].openUrl, SETUP_GUIDES[id].openLabel);
++        }
++      });
++    });
++  }
++
++  function guideToolbar(ids) {
++    return '<div class="integ-actions">' + ids.map(id => {
++      const g = SETUP_GUIDES[id];
++      if (!g) return '';
++      return '<button type="button" class="btn-guide" data-guide="' + id + '">📖 Show me how — ' + esc(g.title.split('—')[0].trim()) + '</button>' +
++        (g.openUrl ? '<button type="button" class="btn-open-site" data-open-guide="' + id + '">↗ Open site</button>' : '');
++    }).join('') + '</div>';
++  }
++
++  function serviceBlock(opts) {
++    // opts: { id, title, connected, blurb, fieldsHtml }
++    return '<div class="integration-block" id="block-' + opts.id + '">' +
++      '<h4><span class="connected-dot' + (opts.connected ? ' on' : '') + '"></span> ' + esc(opts.title) + '</h4>' +
++      '<p class="plain-blurb">' + opts.blurb + '</p>' +
++      guideToolbar([opts.id]) +
++      opts.fieldsHtml +
++      '</div>';
+   }
+ 
+   function statusChecklistHtml() {
+@@ -991,24 +1528,43 @@
+ 
+     if (wizardStep === 0) {
+       html = '<h2>Welcome, Queen! 👑</h2>' +
+-        '<p class="lead">This Setup guide runs entirely in your browser. You’ll open Stripe / Google (etc.) in a new tab, copy your keys, paste them here, and tap <strong>Save</strong>. When you Save, we activate the connection automatically — no terminal, no code, no tech person required.</p>' +
++        '<p class="lead">This Setup has a <strong>Setup Coach</strong> on the right — she explains every weird word (API key, Client ID…) in normal language and opens the right website in a helper window so you don’t get lost.</p>' +
+         '<div class="howto"><h3>How every step works</h3><ol>' +
+-        '<li>We tell you which website to open (Stripe, Google, PayPal…).</li>' +
+-        '<li>You copy the key from <em>your</em> account (never someone else’s).</li>' +
+-        '<li>Paste it in the boxes on this page.</li>' +
+-        '<li>Tap <strong>Save &amp; Continue</strong> — we store it and turn it on for queenscustoms.shop.</li>' +
+-        '<li>For Stripe Connect, Save also opens Stripe so you can click Approve.</li>' +
++        '<li>On the left: the form. On the right: your coach with click-by-click steps.</li>' +
++        '<li>Tap <strong>Show me how</strong> → then <strong>Open their site</strong>. A helper window opens beside this panel.</li>' +
++        '<li>Copy the key from <em>your</em> account, paste it here, tap <strong>Save</strong> — we turn it on for queenscustoms.shop.</li>' +
++        '<li>Ask the coach anything: “What is Shop ID?” or “Can I skip this?”</li>' +
+         '</ol></div>' +
++        guideToolbar(['overview', 'stripe']) +
+         statusChecklistHtml() +
+         '<div class="wizard-nav"><span></span><button type="button" class="btn-pink" id="wiz-next">Start Setup →</button></div>';
+     } else if (wizardStep === 1) {
+       const e = integrations.etsy || {};
+       const a = integrations.amazon || {};
+       const t = integrations.tiktokShop || {};
+-      html = '<h2>E-Commerce Integrations</h2><p class="lead">Connect your marketplace accounts to sync orders and inventory.</p><div class="integration-grid">' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (e.connected ? ' on' : '') + '"></span> Etsy</h4>' + field('API Key', 'wiz-etsy-key', e.apiKey) + field('Shop ID', 'wiz-etsy-shop', e.shopId) + '</div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (a.connected ? ' on' : '') + '"></span> Amazon</h4>' + field('Seller ID', 'wiz-amz-seller', a.sellerId) + field('MWS Token', 'wiz-amz-token', a.mwsToken) + '</div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (t.connected ? ' on' : '') + '"></span> TikTok Shop</h4>' + field('App Key', 'wiz-tiktok-key', t.appKey) + field('App Secret', 'wiz-tiktok-secret', t.appSecret) + '</div>' +
++      html = '<h2>E-Commerce Integrations</h2>' +
++        '<p class="lead"><strong>Optional.</strong> Only fill these if you already sell on Etsy, Amazon, or TikTok Shop. Don’t know what an API key is? Tap <strong>Show me how</strong> — the coach on the right walks you through every click in plain English.</p>' +
++        '<div class="howto"><h3>Don’t panic</h3><ol>' +
++        '<li>You can leave every box empty and tap <strong>Save &amp; Continue</strong> — nothing breaks.</li>' +
++        '<li>Come back anytime via the <strong>Setup</strong> toggle at the top.</li>' +
++        '<li>Use the coach chat: “I don’t sell on Amazon” or “Where is my Etsy Shop ID?”</li>' +
++        '</ol></div>' +
++        '<div class="integration-grid">' +
++        serviceBlock({
++          id: 'etsy', title: 'Etsy', connected: !!e.connected,
++          blurb: 'Connects your Etsy shop so orders/inventory can sync later. <strong>API Key</strong> = secret password from Etsy. <strong>Shop ID</strong> = your shop’s number.',
++          fieldsHtml: field('API Key', 'wiz-etsy-key', e.apiKey) + field('Shop ID', 'wiz-etsy-shop', e.shopId)
++        }) +
++        serviceBlock({
++          id: 'amazon', title: 'Amazon', connected: !!a.connected,
++          blurb: 'Only if you sell on Amazon already. <strong>Seller ID</strong> is your store code in Seller Central. <strong>MWS Token</strong> is an older-style access code — skip if you don’t have one.',
++          fieldsHtml: field('Seller ID', 'wiz-amz-seller', a.sellerId) + field('MWS Token', 'wiz-amz-token', a.mwsToken)
++        }) +
++        serviceBlock({
++          id: 'tiktok', title: 'TikTok Shop', connected: !!t.connected,
++          blurb: 'For TikTok Shop sellers. <strong>App Key</strong> + <strong>App Secret</strong> are two passwords from TikTok’s partner center — like a username and password for the connection.',
++          fieldsHtml: field('App Key', 'wiz-tiktok-key', t.appKey) + field('App Secret', 'wiz-tiktok-secret', t.appSecret)
++        }) +
+         '</div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
+     } else if (wizardStep === 2) {
+       const s = integrations.stripe || {};
+@@ -1016,34 +1572,28 @@
+       const stripeOn = !!(s.connected || s.stripeUserId);
+       html = '<h2>Payments</h2>' +
+         '<div id="wiz-save-banner" class="save-banner"></div>' +
+-        '<p class="lead">Connect <strong>your</strong> Stripe and/or PayPal. After you paste keys and hit Save, we activate them on the shop automatically.</p>' +
+-        '<div class="howto"><h3>Stripe (recommended)</h3><ol>' +
+-        '<li>Open <a href="https://dashboard.stripe.com/register" target="_blank" rel="noopener">Stripe</a> and sign in with your business email.</li>' +
+-        '<li>Get your <strong>Secret key</strong> and <strong>Publishable key</strong> from Developers → API keys.</li>' +
+-        '<li>For one-click Connect: copy your Connect <strong>client_id</strong> (starts with ca_) from Settings → Connect.</li>' +
+-        '<li>Paste below → tap <strong>Save &amp; Continue</strong>. If Connect is ready, Stripe opens so you can Approve — then you’re done.</li>' +
+-        '</ol></div>' +
++        '<p class="lead">This is how customers pay you. Start with <strong>Stripe</strong> (cards). PayPal is optional. Tap <strong>Show me how</strong> — the coach opens the right page and tells you exactly what to copy.</p>' +
+         '<div class="integration-grid">' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (stripeOn ? ' on' : '') + '"></span> Stripe' +
++        '<div class="integration-block" id="block-stripe"><h4><span class="connected-dot' + (stripeOn ? ' on' : '') + '"></span> Stripe' +
+         (stripeOn ? ' <span class="connect-status">Connected' + (s.stripeUserId ? ' · ' + esc(s.stripeUserId) : '') + '</span>' : ' <span class="connect-status off">Not connected yet</span>') +
+         '</h4>' +
++        '<p class="plain-blurb">Stripe moves card money into your bank. Keys are passwords that prove this shop is allowed to charge for you.</p>' +
++        guideToolbar(['stripe']) +
+         '<div class="connect-actions">' +
+         '<button type="button" class="btn-connect stripe" id="wiz-stripe-connect">🔗 Connect with Stripe now</button>' +
+         (s.stripeUserId ? '<button type="button" class="btn-ghost" id="wiz-stripe-disconnect">Disconnect</button>' : '') +
+         '</div>' +
+         field('Connect Client ID (ca_…)', 'wiz-stripe-connect-id', s.connectClientId) +
+-        field('Publishable Key', 'wiz-stripe-pub', s.publishableKey) +
+-        field('Secret Key', 'wiz-stripe-secret', s.secretKey) +
++        field('Publishable Key (pk_…)', 'wiz-stripe-pub', s.publishableKey) +
++        field('Secret Key (sk_…)', 'wiz-stripe-secret', s.secretKey) +
+         field('Webhook Secret (optional)', 'wiz-stripe-webhook', s.webhookSecret) +
+         '</div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (p.connected ? ' on' : '') + '"></span> PayPal</h4>' +
+-        '<div class="howto" style="margin-top:0"><h3>PayPal</h3><ol>' +
+-        '<li>Open <a href="https://developer.paypal.com/dashboard/applications" target="_blank" rel="noopener">PayPal Developer</a>.</li>' +
+-        '<li>Create (or open) your Live app → copy Client ID &amp; Secret.</li>' +
+-        '<li>Paste below → Save. Checkout picks them up automatically.</li>' +
+-        '</ol></div>' +
+-        field('Client ID', 'wiz-paypal-id', p.clientId) + field('Client Secret', 'wiz-paypal-secret', p.clientSecret) +
+-        '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
++        serviceBlock({
++          id: 'paypal', title: 'PayPal', connected: !!p.connected,
++          blurb: 'Lets people check out with PayPal. Client ID + Secret come from PayPal Developer (not the regular PayPal homepage).',
++          fieldsHtml: field('Client ID', 'wiz-paypal-id', p.clientId) + field('Client Secret', 'wiz-paypal-secret', p.clientSecret)
++        }) +
++        '</div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
+     } else if (wizardStep === 3) {
+       const sa = integrations.socialAuth || {};
+       const g = sa.google || {};
+@@ -1051,36 +1601,36 @@
+       const f = sa.facebook || {};
+       html = '<h2>Shopper Logins</h2>' +
+         '<div id="wiz-save-banner" class="save-banner"></div>' +
+-        '<p class="lead">Optional — let customers sign in with Google, Apple, or Facebook. These apps belong to <strong>you</strong>. After Save, the buttons appear on the shop login automatically.</p>' +
+-        '<div class="howto"><h3>Google (easiest)</h3><ol>' +
+-        '<li>Open <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Credentials</a>.</li>' +
+-        '<li>Create an OAuth Client ID (type: Web application).</li>' +
+-        '<li>Add authorized redirect URI exactly: <code>https://queenscustoms.shop/api/auth/google/callback</code></li>' +
+-        '<li>Paste Client ID + Secret below, turn Enable ON, tap Save — Google login goes live.</li>' +
+-        '</ol></div>' +
++        '<p class="lead"><strong>Optional.</strong> Let customers tap “Continue with Google” (easiest). Apple &amp; Facebook are extra. The coach will open the right developer page and tell you what to paste.</p>' +
+         '<div class="integration-grid">' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (g.enabled && g.clientId ? ' on' : '') + '"></span> Google</h4>' +
++        '<div class="integration-block" id="block-google"><h4><span class="connected-dot' + (g.enabled && g.clientId ? ' on' : '') + '"></span> Google</h4>' +
++        '<p class="plain-blurb">Shoppers sign in with their Google account — no new password to remember.</p>' +
++        guideToolbar(['google']) +
+         '<div class="toggle-row"><label for="wiz-google-on">Enable Google Sign-In on the shop</label><input type="checkbox" id="wiz-google-on"' + (g.enabled ? ' checked' : '') + '/></div>' +
+         field('Client ID', 'wiz-google-id', g.clientId) + field('Client Secret', 'wiz-google-secret', g.clientSecret) +
+         '</div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (a.enabled && a.clientId ? ' on' : '') + '"></span> Apple</h4>' +
+-        '<p class="connect-note">Apple Developer → Services ID + Key (.p8). Return URL: <code>https://queenscustoms.shop/api/auth/apple/callback</code></p>' +
++        '<div class="integration-block" id="block-apple"><h4><span class="connected-dot' + (a.enabled && a.clientId ? ' on' : '') + '"></span> Apple</h4>' +
++        '<p class="plain-blurb">Needs a paid Apple Developer account. Skip unless you specifically want the Apple button.</p>' +
++        guideToolbar(['apple']) +
+         '<div class="toggle-row"><label for="wiz-apple-on">Enable Apple Sign-In on the shop</label><input type="checkbox" id="wiz-apple-on"' + (a.enabled ? ' checked' : '') + '/></div>' +
+         field('Services ID (Client ID)', 'wiz-apple-id', a.clientId) +
+         field('Team ID', 'wiz-apple-team', a.teamId) +
+         field('Key ID', 'wiz-apple-key', a.keyId) +
+         '<div class="form-field"><label>Private Key (.p8 contents)</label><textarea id="wiz-apple-private" placeholder="-----BEGIN PRIVATE KEY-----">' + esc(a.privateKey || '') + '</textarea></div>' +
+         '</div>' +
+-        '<div class="integration-block"><h4><span class="connected-dot' + (f.enabled && (f.appId || f.clientId) ? ' on' : '') + '"></span> Facebook</h4>' +
+-        '<p class="connect-note">Meta for Developers → Facebook Login. Redirect: <code>https://queenscustoms.shop/api/auth/facebook/callback</code></p>' +
++        '<div class="integration-block" id="block-facebook"><h4><span class="connected-dot' + (f.enabled && (f.appId || f.clientId) ? ' on' : '') + '"></span> Facebook</h4>' +
++        '<p class="plain-blurb">“Continue with Facebook” for shoppers. Free Meta developer app.</p>' +
++        guideToolbar(['facebook']) +
+         '<div class="toggle-row"><label for="wiz-fb-on">Enable Facebook Sign-In on the shop</label><input type="checkbox" id="wiz-fb-on"' + (f.enabled ? ' checked' : '') + '/></div>' +
+         field('App ID', 'wiz-fb-id', f.appId || f.clientId) + field('App Secret', 'wiz-fb-secret', f.appSecret || f.clientSecret) +
+         '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
+     } else if (wizardStep === 4) {
+-      html = '<h2>Email Marketing</h2><p class="lead">Connect your email platform for newsletters and order updates.</p>' +
+-        '<div class="form-field"><label>Provider</label><select id="wiz-email-provider"><option value="mailchimp">Mailchimp</option><option value="klaviyo">Klaviyo</option><option value="sendgrid">SendGrid</option></select></div>' +
++      html = '<h2>Email Marketing</h2>' +
++        '<p class="lead"><strong>Optional.</strong> Connect Mailchimp (or similar) only if you want newsletters. Tap Show me how if “API key” still sounds scary.</p>' +
++        guideToolbar(['email']) +
++        '<div class="form-field"><label>Provider</label><select id="wiz-email-provider"><option value="mailchimp">Mailchimp (easiest)</option><option value="klaviyo">Klaviyo</option><option value="sendgrid">SendGrid</option></select></div>' +
+         field('API Key', 'wiz-email-key', em.apiKey) +
+-        '<div id="wiz-list-field" class="form-field"><label>List ID</label><input type="text" id="wiz-email-list" value="' + escAttr(em.listId || '') + '"/></div>' +
++        '<div id="wiz-list-field" class="form-field"><label>List / Audience ID</label><input type="text" id="wiz-email-list" value="' + escAttr(em.listId || '') + '"/></div>' +
+         '<div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
+     } else if (wizardStep === 5) {
+       const data = await api('/api/admin/products');
+@@ -1205,6 +1755,11 @@
+         } catch (e) { toast(e.message, 'error'); }
+       });
+     }
++
++    wireCoachUi();
++    document.querySelectorAll('[data-guide]').forEach(btn => {
++      btn.classList.toggle('active', btn.dataset.guide === activeGuideId);
++    });
+   }
+ 
+   async function saveWizardStep() {
+diff --git a/admin/queen-nav.js b/admin/queen-nav.js
+new file mode 100644
+index 0000000..b065df9
+--- /dev/null
++++ b/admin/queen-nav.js
+@@ -0,0 +1,399 @@
++/**
++ * Admin Queen Navigator — find / jump around Operations + Setup.
++ * Initialized from admin/index.html via QCCAdminQueen.init(bridge).
++ */
++(function () {
++  'use strict';
++
++  /** Searchable map of the admin portal (indexing). */
++  const ADMIN_INDEX = [
++    {
++      id: 'ops-dashboard',
++      title: 'Dashboard',
++      blurb: 'Your home base — stats, recent orders, and new messages.',
++      keywords: ['dashboard', 'home', 'stats', 'overview', 'numbers'],
++      target: { mode: 'operations', page: 'dashboard' },
++    },
++    {
++      id: 'ops-orders',
++      title: 'Orders',
++      blurb: 'See customer orders, update status, and open order details.',
++      keywords: ['orders', 'order', 'shipping', 'shipped', 'fulfillment', 'pending', 'sales'],
++      target: { mode: 'operations', page: 'orders' },
++    },
++    {
++      id: 'ops-customers',
++      title: 'Customers',
++      blurb: 'People who bought or signed up in your shop.',
++      keywords: ['customers', 'customer', 'buyers', 'shoppers', 'people'],
++      target: { mode: 'operations', page: 'customers' },
++    },
++    {
++      id: 'ops-inquiries',
++      title: 'Inquiries (Queen Chat inbox)',
++      blurb: 'Messages from the website Queen Chat and contact form.',
++      keywords: ['inquiries', 'inquiry', 'messages', 'inbox', 'queen chat', 'contact', 'replies'],
++      target: { mode: 'operations', page: 'inquiries' },
++    },
++    {
++      id: 'ops-products',
++      title: 'Products',
++      blurb: 'Edit product names, prices, inventory, and status.',
++      keywords: ['products', 'product', 'inventory', 'price', 'stock', 'catalog', 'tumbler'],
++      target: { mode: 'operations', page: 'products' },
++    },
++    {
++      id: 'ops-admins',
++      title: 'Admin Users',
++      blurb: 'Who can log into this admin portal.',
++      keywords: ['admin', 'admins', 'users', 'team', 'password', 'login email'],
++      target: { mode: 'operations', page: 'admin-users' },
++    },
++    {
++      id: 'mode-setup',
++      title: 'Setup Wizard',
++      blurb: 'Connect Stripe, PayPal, Google login, marketplaces, and more.',
++      keywords: ['setup', 'wizard', 'connect', 'configure', 'integrations', 'keys'],
++      target: { mode: 'setup' },
++    },
++    {
++      id: 'mode-operations',
++      title: 'Operations mode',
++      blurb: 'Day-to-day dashboard for orders and messages.',
++      keywords: ['operations', 'ops', 'daily', 'work'],
++      target: { mode: 'operations', page: 'dashboard' },
++    },
++    {
++      id: 'setup-welcome',
++      title: 'Setup → Welcome',
++      blurb: 'How Setup works in plain English.',
++      keywords: ['welcome', 'start setup', 'how setup works'],
++      target: { mode: 'setup', step: 0, guide: 'overview' },
++    },
++    {
++      id: 'setup-etsy',
++      title: 'Setup → Etsy',
++      blurb: 'Optional: paste Etsy API Key + Shop ID.',
++      keywords: ['etsy', 'shop id', 'marketplace', 'api key etsy'],
++      target: { mode: 'setup', step: 1, guide: 'etsy' },
++    },
++    {
++      id: 'setup-amazon',
++      title: 'Setup → Amazon',
++      blurb: 'Optional: Seller ID / MWS for Amazon sellers.',
++      keywords: ['amazon', 'seller id', 'mws', 'seller central'],
++      target: { mode: 'setup', step: 1, guide: 'amazon' },
++    },
++    {
++      id: 'setup-tiktok',
++      title: 'Setup → TikTok Shop',
++      blurb: 'Optional: TikTok App Key + App Secret.',
++      keywords: ['tiktok', 'tik tok', 'app key', 'app secret'],
++      target: { mode: 'setup', step: 1, guide: 'tiktok' },
++    },
++    {
++      id: 'setup-stripe',
++      title: 'Setup → Stripe payments',
++      blurb: 'Card payments — Publishable key, Secret key, Connect.',
++      keywords: ['stripe', 'card', 'payment', 'payments', 'pk_', 'sk_', 'connect', 'checkout', 'money'],
++      target: { mode: 'setup', step: 2, guide: 'stripe' },
++    },
++    {
++      id: 'setup-paypal',
++      title: 'Setup → PayPal',
++      blurb: 'PayPal checkout Client ID + Secret.',
++      keywords: ['paypal', 'pay pal'],
++      target: { mode: 'setup', step: 2, guide: 'paypal' },
++    },
++    {
++      id: 'setup-google',
++      title: 'Setup → Google Sign-In',
++      blurb: 'Let shoppers continue with Google.',
++      keywords: ['google', 'sign in', 'login', 'oauth', 'social'],
++      target: { mode: 'setup', step: 3, guide: 'google' },
++    },
++    {
++      id: 'setup-apple',
++      title: 'Setup → Apple Sign-In',
++      blurb: 'Optional Apple login (needs Apple Developer).',
++      keywords: ['apple', 'sign in with apple', '.p8'],
++      target: { mode: 'setup', step: 3, guide: 'apple' },
++    },
++    {
++      id: 'setup-facebook',
++      title: 'Setup → Facebook Sign-In',
++      blurb: 'Optional Facebook / Meta login.',
++      keywords: ['facebook', 'meta', 'fb'],
++      target: { mode: 'setup', step: 3, guide: 'facebook' },
++    },
++    {
++      id: 'setup-email',
++      title: 'Setup → Email marketing',
++      blurb: 'Optional Mailchimp / Klaviyo / SendGrid.',
++      keywords: ['email', 'mailchimp', 'klaviyo', 'sendgrid', 'newsletter', 'audience'],
++      target: { mode: 'setup', step: 4, guide: 'email' },
++    },
++    {
++      id: 'setup-products',
++      title: 'Setup → Products quick-edit',
++      blurb: 'Quick price and inventory tweaks during Setup.',
++      keywords: ['setup products', 'quick edit', 'wizard products'],
++      target: { mode: 'setup', step: 5 },
++    },
++    {
++      id: 'setup-admins',
++      title: 'Setup → Add admin',
++      blurb: 'Add another person who can use this portal.',
++      keywords: ['add admin', 'team member', 'setup admin'],
++      target: { mode: 'setup', step: 6 },
++    },
++    {
++      id: 'help-api-key',
++      title: 'What is an API key?',
++      blurb: 'A secret password from Stripe/Etsy/Google — copy/paste, don’t share.',
++      keywords: ['api key', 'what is', 'secret', 'client id', 'explain'],
++      target: { mode: 'setup', step: 1, guide: 'overview', ask: 'What is an API key?' },
++    },
++  ];
++
++  const QUICK = [
++    { label: 'Find Stripe', q: 'stripe' },
++    { label: 'Orders', q: 'orders' },
++    { label: 'Inquiries', q: 'inquiries' },
++    { label: 'Open Setup', q: 'setup wizard' },
++    { label: 'What is an API key?', q: 'what is an api key' },
++  ];
++
++  let bridge = null;
++
++  function esc(s) {
++    return String(s || '')
++      .replace(/&/g, '&amp;')
++      .replace(/</g, '&lt;')
++      .replace(/>/g, '&gt;')
++      .replace(/"/g, '&quot;');
++  }
++
++  function scoreEntry(entry, q) {
++    const t = q.toLowerCase().trim();
++    if (!t) return 0;
++    let score = 0;
++    const title = entry.title.toLowerCase();
++    const blurb = entry.blurb.toLowerCase();
++    if (title === t) score += 100;
++    if (title.includes(t)) score += 40;
++    if (blurb.includes(t)) score += 10;
++    entry.keywords.forEach((k) => {
++      const kw = k.toLowerCase();
++      if (kw === t) score += 50;
++      else if (t.includes(kw) || kw.includes(t)) score += 24;
++      else {
++        const parts = t.split(/\s+/);
++        parts.forEach((p) => {
++          if (p.length > 2 && (kw.includes(p) || p.includes(kw))) score += 8;
++        });
++      }
++    });
++    return score;
++  }
++
++  function searchIndex(q, limit) {
++    limit = limit || 6;
++    return ADMIN_INDEX
++      .map((e) => ({ entry: e, score: scoreEntry(e, q) }))
++      .filter((x) => x.score > 0)
++      .sort((a, b) => b.score - a.score)
++      .slice(0, limit)
++      .map((x) => x.entry);
++  }
++
++  function el(html) {
++    const t = document.createElement('template');
++    t.innerHTML = html.trim();
++    return t.content.firstElementChild;
++  }
++
++  function addBubble(log, text, who) {
++    const b = document.createElement('div');
++    b.className = 'aq-bubble ' + who;
++    b.innerHTML = text;
++    log.appendChild(b);
++    log.scrollTop = log.scrollHeight;
++    return b;
++  }
++
++  function renderHits(log, hits, preface) {
++    if (preface) addBubble(log, preface, 'queen');
++    if (!hits.length) {
++      addBubble(log, 'I couldn’t find that in the index. Try “Stripe”, “orders”, “inquiries”, or “Etsy”. Or ask in everyday words.', 'queen');
++      return;
++    }
++    const wrap = document.createElement('div');
++    wrap.className = 'aq-hits';
++    hits.forEach((h) => {
++      const btn = document.createElement('button');
++      btn.type = 'button';
++      btn.className = 'aq-hit';
++      btn.innerHTML = '<strong>' + esc(h.title) + '</strong><span>' + esc(h.blurb) + '</span>';
++      btn.addEventListener('click', () => go(h, log));
++      wrap.appendChild(btn);
++    });
++    log.appendChild(wrap);
++    log.scrollTop = log.scrollHeight;
++  }
++
++  function go(entry, log) {
++    if (!bridge) return;
++    addBubble(log, 'Taking you to <strong>' + esc(entry.title) + '</strong>…', 'queen');
++    bridge.navigate(entry.target);
++    if (entry.target.ask && typeof bridge.askSetupCoach === 'function') {
++      setTimeout(() => bridge.askSetupCoach(entry.target.ask), 400);
++    }
++  }
++
++  async function handleQuery(q, log, input) {
++    const query = (q || '').trim();
++    if (!query) return;
++    addBubble(log, esc(query), 'user');
++    if (input) input.value = '';
++
++    const hits = searchIndex(query);
++    if (hits.length) {
++      renderHits(
++        log,
++        hits,
++        hits.length === 1
++          ? 'Found it — tap below and I’ll take you there:'
++          : 'Here’s what matches in your admin index — tap one:'
++      );
++      // Auto-jump when it's an obvious single strong match
++      if (hits.length === 1 && scoreEntry(hits[0], query) >= 40) {
++        setTimeout(() => go(hits[0], log), 350);
++      }
++      return;
++    }
++
++    // Fall through to Setup Coach API for free-form help
++    if (bridge && typeof bridge.askAdminCoach === 'function') {
++      addBubble(log, 'Searching my notes…', 'queen');
++      try {
++        const reply = await bridge.askAdminCoach(query);
++        // remove "Searching…" last queen bubble if it's the placeholder — keep simple: just append
++        addBubble(log, reply || 'Try asking “where is Stripe?” or “open orders”.', 'queen');
++        const again = searchIndex(query);
++        if (again.length) renderHits(log, again, 'Or jump here:');
++      } catch (_) {
++        addBubble(log, 'Try words like <strong>Stripe</strong>, <strong>orders</strong>, <strong>inquiries</strong>, or <strong>Setup</strong>.', 'queen');
++      }
++      return;
++    }
++
++    addBubble(log, 'Try “Stripe”, “orders”, “products”, or “open Setup”.', 'queen');
++  }
++
++  function init(b) {
++    bridge = b;
++    if (document.getElementById('aq-nav')) return;
++
++    const root = el(`
++<div class="aq-nav" id="aq-nav" aria-live="polite">
++  <div class="aq-panel" id="aq-panel" role="dialog" aria-label="Admin Queen navigator" hidden>
++    <div class="aq-header">
++      <img src="/assets/artist.jpg" alt="The Vibe Queen" width="40" height="40" onerror="this.style.display='none'"/>
++      <div class="aq-header-text">
++        <strong>Admin Queen</strong>
++        <span>Find anything · I’ll take you there</span>
++      </div>
++      <button type="button" class="aq-close" id="aq-close" aria-label="Close">×</button>
++    </div>
++    <div class="aq-messages" id="aq-messages"></div>
++    <div class="aq-chips" id="aq-chips"></div>
++    <form class="aq-form" id="aq-form">
++      <input type="search" id="aq-input" placeholder="Find Stripe, orders, Etsy…" autocomplete="off"/>
++      <button type="submit" class="aq-send">Go</button>
++    </form>
++  </div>
++  <button type="button" class="aq-fab" id="aq-fab" aria-label="Open Admin Queen" aria-expanded="false">
++    <span class="aq-fab-pulse" aria-hidden="true"></span>
++    <img src="/assets/artist.jpg" alt="" onerror="this.replaceWith(document.createTextNode('👑'))"/>
++  </button>
++  <div class="aq-tip" id="aq-tip">Ask me where something is 👑</div>
++</div>`);
++
++    document.body.appendChild(root);
++
++    const panel = document.getElementById('aq-panel');
++    const fab = document.getElementById('aq-fab');
++    const log = document.getElementById('aq-messages');
++    const chips = document.getElementById('aq-chips');
++    const form = document.getElementById('aq-form');
++    const input = document.getElementById('aq-input');
++    const tip = document.getElementById('aq-tip');
++
++    function open() {
++      root.classList.add('open');
++      panel.hidden = false;
++      fab.setAttribute('aria-expanded', 'true');
++      tip.classList.remove('show');
++      if (!log.dataset.greeted) {
++        addBubble(
++          log,
++          'Hey Queen 👑 I’m your <strong>Admin navigator</strong>. Ask where something is — “Stripe”, “orders”, “inquiries” — and I’ll open it. I work in <em>Operations</em> and <em>Setup</em>.',
++          'queen'
++        );
++        log.dataset.greeted = '1';
++      }
++      setTimeout(() => input.focus(), 100);
++    }
++
++    function close() {
++      root.classList.remove('open');
++      fab.setAttribute('aria-expanded', 'false');
++      setTimeout(() => {
++        if (!root.classList.contains('open')) panel.hidden = true;
++      }, 200);
++    }
++
++    QUICK.forEach((item) => {
++      const btn = document.createElement('button');
++      btn.type = 'button';
++      btn.className = 'aq-chip';
++      btn.textContent = item.label;
++      btn.addEventListener('click', () => handleQuery(item.q, log, input));
++      chips.appendChild(btn);
++    });
++
++    fab.addEventListener('click', () => {
++      if (root.classList.contains('open')) close();
++      else open();
++    });
++    document.getElementById('aq-close').addEventListener('click', close);
++    form.addEventListener('submit', (e) => {
++      e.preventDefault();
++      handleQuery(input.value, log, input);
++    });
++
++    document.addEventListener('keydown', (e) => {
++      if (e.key === 'Escape' && root.classList.contains('open')) close();
++      // Ctrl/Cmd+K — quick find
++      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
++        e.preventDefault();
++        if (!document.body.classList.contains('authed')) return;
++        open();
++      }
++    });
++
++    setTimeout(() => tip.classList.add('show'), 1600);
++    setTimeout(() => tip.classList.remove('show'), 6500);
++
++    // Expose search for bridge/debug
++    window.QCCAdminQueen.search = searchIndex;
++    window.QCCAdminQueen.open = open;
++  }
++
++  window.QCCAdminQueen = {
++    init: init,
++    index: ADMIN_INDEX,
++    search: searchIndex,
++  };
++})();
+diff --git a/server.js b/server.js
+index 4db13d0..fc5534e 100644
+--- a/server.js
++++ b/server.js
+@@ -549,6 +549,224 @@ app.post('/api/admin/integrations/complete-setup', adminMiddleware, (req, res) =
+   res.json(maskSecrets(current));
+ });
+ 
++/**
++ * Setup Coach — plain-English answers for non-technical admins.
++ * Rule-based by default; uses OPENAI_API_KEY / SETUP_COACH_API_KEY when set.
++ */
++function setupCoachReply(message, guideId, wizardStep) {
++  const q = String(message || '').toLowerCase().trim();
++  const guide = String(guideId || 'overview');
++  const step = typeof wizardStep === 'number' ? wizardStep : 0;
++
++  const pack = (reply, extra) => Object.assign({
++    reply,
++    replyHtml: reply,
++    suggestGuide: null,
++    openUrl: null,
++    openLabel: null,
++  }, extra || {});
++
++  if (!q) {
++    return pack('Ask me anything — for example: “What is an API key?” or “Where do I find my Etsy Shop ID?”');
++  }
++
++  if (/(what('?s| is) an? )?api key|what are (these|those) keys|secret key|client secret|app secret/.test(q)) {
++    return pack(
++      'An <strong>API key</strong> (or Secret / App Secret) is just a <em>secret password</em> that Etsy, Stripe, Google, etc. give you. ' +
++      'It proves this website is allowed to talk to <em>your</em> account. You copy it from their website and paste it in the box — you’re not buying a product. ' +
++      'Never post it on social media or email it to strangers.'
++    );
++  }
++
++  if (/skip|later|don'?t (have|sell|use)|not yet|optional|do i (need|have to)/.test(q)) {
++    return pack(
++      'Yes — most of these steps are optional. Leave the boxes empty and tap <strong>Save &amp; Continue</strong>. ' +
++      'Nothing breaks. You can reopen <strong>Setup</strong> anytime from the toggle at the top when you’re ready.'
++    );
++  }
++
++  if (/shop id|etsy/.test(q) && (/shop|id|etsy|find|where/.test(q) || guide === 'etsy' || step === 1)) {
++    return pack(
++      'Your <strong>Etsy Shop ID</strong> is a number that identifies your shop (not your shop name). ' +
++      'Easiest path: open Etsy Developers while signed into the same account as your shop, open your app, and look for Shop ID / shop numeric id. ' +
++      'You can also find it in Shop Manager under settings or from seller tools. If you’re not on Etsy, skip this whole section.',
++      { suggestGuide: 'etsy', openUrl: 'https://www.etsy.com/developers/your-apps', openLabel: 'Etsy Developers' }
++    );
++  }
++
++  if (/mws|amazon|seller id/.test(q)) {
++    return pack(
++      '<strong>Seller ID</strong> is Amazon’s code for your seller account (in Seller Central → Settings → Account Info). ' +
++      '<strong>MWS Token</strong> is an older Amazon access code — many new sellers don’t have one. ' +
++      'If you don’t sell on Amazon, skip this section entirely.',
++      { suggestGuide: 'amazon', openUrl: 'https://sellercentral.amazon.com/', openLabel: 'Amazon Seller Central' }
++    );
++  }
++
++  if (/tiktok/.test(q)) {
++    return pack(
++      'TikTok Shop’s <strong>App Key</strong> and <strong>App Secret</strong> are two passwords from the TikTok Shop Partner Center. ' +
++      'Open your app there, copy both, paste on the left. Not on TikTok Shop? Skip.',
++      { suggestGuide: 'tiktok', openUrl: 'https://partner.tiktokshop.com/', openLabel: 'TikTok Shop Partner' }
++    );
++  }
++
++  if (/stripe|pk_|sk_|publishable|card payment|take payment/.test(q)) {
++    return pack(
++      'Stripe is how customers pay by card. Open Stripe → <strong>Developers</strong> → <strong>API keys</strong>. ' +
++      'Copy the key starting with <code>pk_</code> into Publishable Key and <code>sk_</code> into Secret Key. ' +
++      'Then tap Save — we’ll activate payments for you. Connect Client ID (starts with <code>ca_</code>) is optional but lets one-click Connect.',
++      { suggestGuide: 'stripe', openUrl: 'https://dashboard.stripe.com/apikeys', openLabel: 'Stripe API keys' }
++    );
++  }
++
++  if (/paypal/.test(q)) {
++    return pack(
++      'For PayPal, use the <strong>Developer</strong> dashboard (not only paypal.com). Create a Live app, then copy Client ID and Secret into the boxes and Save.',
++      { suggestGuide: 'paypal', openUrl: 'https://developer.paypal.com/dashboard/applications', openLabel: 'PayPal Developer' }
++    );
++  }
++
++  if (/google|oauth|redirect/.test(q)) {
++    return pack(
++      'Google Sign-In lets shoppers tap “Continue with Google.” In Google Cloud, create an OAuth Client (Web application) and add this exact redirect URI:<br>' +
++      '<code>https://queenscustoms.shop/api/auth/google/callback</code><br>' +
++      'Paste Client ID + Secret, turn Enable ON, Save — the button appears on your shop.',
++      { suggestGuide: 'google', openUrl: 'https://console.cloud.google.com/apis/credentials', openLabel: 'Google Credentials' }
++    );
++  }
++
++  if (/apple|\.p8|services id/.test(q)) {
++    return pack(
++      'Apple Sign-In needs a paid Apple Developer account. If that sounds like a hassle, skip it — Google alone is enough for most shops. ' +
++      'If you continue: create a Services ID, enable Sign in with Apple, set the return URL to ' +
++      '<code>https://queenscustoms.shop/api/auth/apple/callback</code>, then paste Team ID, Key ID, and the .p8 private key text.',
++      { suggestGuide: 'apple', openUrl: 'https://developer.apple.com/account/resources/identifiers/list', openLabel: 'Apple Developer' }
++    );
++  }
++
++  if (/facebook|meta/.test(q)) {
++    return pack(
++      'Create a Meta (Facebook) app → add Facebook Login → set the redirect URI to ' +
++      '<code>https://queenscustoms.shop/api/auth/facebook/callback</code> → copy App ID and App Secret → Enable → Save.',
++      { suggestGuide: 'facebook', openUrl: 'https://developers.facebook.com/apps/', openLabel: 'Meta for Developers' }
++    );
++  }
++
++  if (/mailchimp|klaviyo|sendgrid|newsletter|email/.test(q)) {
++    return pack(
++      'Email marketing is optional. Mailchimp is friendliest: Account → Extras → API keys → Create Key → paste here. ' +
++      'List/Audience ID is which mailing list new signups join. Skip if you don’t send newsletters yet.',
++      { suggestGuide: 'email', openUrl: 'https://admin.mailchimp.com/account/api/', openLabel: 'Mailchimp API keys' }
++    );
++  }
++
++  if (/where|paste|box|left|panel|window|browser|help|stuck|confused|don'?t understand/.test(q)) {
++    return pack(
++      'Keep this Setup page open. Tap <strong>Show me how</strong> on the service you’re doing — steps appear in the coach panel. ' +
++      'Tap <strong>Open their site</strong> for a helper window beside you. Copy from that window → paste into the boxes on the left → Save. ' +
++      'Their sites can’t load inside this panel (security) — the helper window is the normal way.'
++    );
++  }
++
++  // Guide-aware default
++  const guideHints = {
++    etsy: 'You’re on the Etsy guide. Open Etsy Developers, copy API Key + Shop ID, paste on the left — or skip if you don’t sell on Etsy.',
++    amazon: 'Amazon is optional. Seller ID is in Seller Central. No Amazon shop? Skip.',
++    tiktok: 'TikTok Shop needs App Key + App Secret from Partner Center — or skip.',
++    stripe: 'Open Stripe API keys, copy pk_ and sk_, paste, then Save & Activate.',
++    paypal: 'Use PayPal Developer → Live app → Client ID + Secret → Save.',
++    google: 'Google Cloud → OAuth Web client → add the queenscustoms.shop redirect URI → paste keys → Enable → Save.',
++    apple: 'Apple is advanced/optional. Skip unless you need the Apple button.',
++    facebook: 'Meta app → Facebook Login → redirect URI → App ID + Secret → Enable → Save.',
++    email: 'Optional newsletters. Mailchimp API key + Audience ID, or Continue to skip.',
++    overview: 'Pick a service on the left, tap Show me how, and I’ll walk you through it step by step.',
++  };
++
++  return pack(
++    (guideHints[guide] || guideHints.overview) +
++    ' You can also ask: “What is an API key?”, “Can I skip this?”, or “Where is my Shop ID?”'
++  );
++}
++
++app.post('/api/admin/setup-coach', adminMiddleware, async (req, res) => {
++  try {
++    const message = (req.body && req.body.message) || '';
++    const guideId = (req.body && req.body.guideId) || 'overview';
++    const wizardStep = req.body && req.body.wizardStep;
++    const context = (req.body && req.body.context) || 'setup';
++    let result = setupCoachReply(message, guideId, wizardStep);
++
++    // Admin Queen navigator: nudge toward findable destinations
++    if (context === 'admin-nav') {
++      const q = String(message).toLowerCase();
++      if (/order/.test(q)) {
++        result = Object.assign(result, {
++          replyHtml: 'Orders live in <strong>Operations → Orders</strong>. Ask the pink Admin Queen avatar “orders” and she’ll open it for you.',
++        });
++      } else if (/inquir|message|inbox|queen chat/.test(q)) {
++        result = Object.assign(result, {
++          replyHtml: 'Customer messages are under <strong>Operations → Inquiries</strong> (that’s the Queen Chat inbox). Tap the Admin Queen avatar and type “inquiries”.',
++        });
++      } else if (/product|inventory|price|stock/.test(q)) {
++        result = Object.assign(result, {
++          replyHtml: 'Products are in <strong>Operations → Products</strong>, or during Setup on the Products step. Ask Admin Queen “products”.',
++        });
++      }
++    }
++
++    const apiKey = process.env.SETUP_COACH_API_KEY || process.env.OPENAI_API_KEY;
++    if (apiKey && String(message).trim().length > 2) {
++      try {
++        const system =
++          context === 'admin-nav'
++            ? ('You help the Queenscustoms shop owner navigate her admin portal. ' +
++              'Operations pages: Dashboard, Orders, Customers, Inquiries, Products, Admin Users. ' +
++              'Setup steps: Welcome, E-Commerce (Etsy/Amazon/TikTok), Payments (Stripe/PayPal), Logins (Google/Apple/Facebook), Email, Products, Admins. ' +
++              'Tell her what to type into the Admin Queen finder (bottom-left) or which toggle to use (Operations vs Setup). Plain English, under 100 words. Simple HTML ok.')
++            : ('You are the Setup Coach for Queens Custom Creations admin (queenscustoms.shop). ' +
++          'Explain integrations (Etsy, Amazon, TikTok, Stripe, PayPal, Google/Apple/Facebook, email) in very plain, friendly, non-technical language for a shop owner. ' +
++          'Never ask for passwords to be pasted into chat. Tell them which button to tap (Show me how / Open site / Save). ' +
++          'Keep answers under 120 words. You may use simple HTML: <strong>, <em>, <code>, <br>. Current guide: ' +
++          guideId + '. Wizard step index: ' + String(wizardStep));
++
++        const r = await fetch('https://api.openai.com/v1/chat/completions', {
++          method: 'POST',
++          headers: {
++            Authorization: 'Bearer ' + apiKey,
++            'Content-Type': 'application/json',
++          },
++          body: JSON.stringify({
++            model: process.env.SETUP_COACH_MODEL || 'gpt-4o-mini',
++            temperature: 0.4,
++            max_tokens: 280,
++            messages: [
++              { role: 'system', content: system },
++              { role: 'user', content: String(message).slice(0, 500) },
++            ],
++          }),
++        });
++        if (r.ok) {
++          const data = await r.json();
++          const text = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
++          if (text) {
++            result.reply = text;
++            result.replyHtml = text;
++            result.source = 'llm';
++          }
++        }
++      } catch (llmErr) {
++        console.warn('[setup-coach] LLM fallback to rules:', llmErr.message);
++      }
++    }
++
++    res.json(result);
++  } catch (e) {
++    console.error('[setup-coach]', e);
++    res.status(500).json({ error: e.message || 'Coach unavailable' });
++  }
++});
++
+ // Stripe Connect OAuth (Setup → Payments)
+ app.get('/api/admin/integrations/stripe/connect', adminMiddleware, (req, res) => {
+   try {

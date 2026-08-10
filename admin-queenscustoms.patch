@@ -1,0 +1,3630 @@
+From f13baf887e912358aefbc4aa9fdd551ff508d9f9 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 7 Aug 2026 00:49:51 +0000
+Subject: [PATCH 1/2] feat: add Queens Customs admin portal at
+ admin.queenscustoms.shop
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Integrates the full Queens Customs admin portal directly into myk-hub so
+it deploys automatically to GoDaddy when main is updated.
+
+Hostname routing:
+  admin.queenscustoms.shop  → admin portal pages + API
+  queenscustoms.shop        → static site + public API endpoints
+
+Admin portal URLs (live after deploy):
+  https://admin.queenscustoms.shop/         → login
+  https://admin.queenscustoms.shop/admin/login
+  https://admin.queenscustoms.shop/admin/operations
+  https://admin.queenscustoms.shop/admin/setup-wizard
+
+API endpoints:
+  Public (no auth, callable from queenscustoms.shop):
+    POST /api/orders      → orders dashboard
+    POST /api/inquiries   → inquiries inbox
+    GET  /api/products    → live product catalog
+
+  Admin (JWT required):
+    POST /api/admin/auth/login
+    GET  /api/admin/auth/me
+    GET|POST /api/admin/users
+    PUT|DELETE /api/admin/users/:id
+    GET /api/admin/orders
+    PUT /api/admin/orders/:id/status
+    GET /api/admin/inquiries
+    PUT /api/admin/inquiries/:id
+    GET|PUT /api/admin/products
+    GET|PUT /api/admin/integrations
+
+Authentication: bcryptjs (12 rounds) + JWT (HS256, 8h)
+Master admin auto-seeded from ADMIN_SEED_EMAIL / ADMIN_SEED_PASSWORD env vars.
+
+Environment variables needed in GoDaddy app settings:
+  ADMIN_JWT_SECRET=<long-random-string>
+  ADMIN_SEED_PASSWORD=87188718
+
+Files added:
+  admin/          — auth, db, middleware, seed, router, routes/*
+  sites/queenscustoms/admin/  — login.html, operations.html, setup-wizard.html
+  sites/queenscustoms/qc-integration.js  — drop-in script for the website
+  .env.example    — documents required env vars
+---
+ .env.example                                |  13 +
+ .gitignore                                  |   1 +
+ admin/auth.js                               |  39 +
+ admin/db.js                                 | 320 ++++++++
+ admin/index.js                              | 126 ++++
+ admin/middleware.js                         |  32 +
+ admin/routes/auth.js                        |  68 ++
+ admin/routes/operations.js                  | 131 ++++
+ admin/routes/setup-wizard.js                | 121 +++
+ admin/routes/users.js                       | 117 +++
+ admin/routes/website.js                     | 130 ++++
+ admin/seed.js                               |  54 ++
+ package-lock.json                           | 170 ++++-
+ package.json                                |   4 +-
+ server.js                                   |  56 ++
+ sites/queenscustoms/admin/login.html        | 204 +++++
+ sites/queenscustoms/admin/operations.html   | 647 ++++++++++++++++
+ sites/queenscustoms/admin/setup-wizard.html | 791 ++++++++++++++++++++
+ sites/queenscustoms/qc-integration.js       | 192 +++++
+ 19 files changed, 3175 insertions(+), 41 deletions(-)
+ create mode 100644 .env.example
+ create mode 100644 admin/auth.js
+ create mode 100644 admin/db.js
+ create mode 100644 admin/index.js
+ create mode 100644 admin/middleware.js
+ create mode 100644 admin/routes/auth.js
+ create mode 100644 admin/routes/operations.js
+ create mode 100644 admin/routes/setup-wizard.js
+ create mode 100644 admin/routes/users.js
+ create mode 100644 admin/routes/website.js
+ create mode 100644 admin/seed.js
+ create mode 100644 sites/queenscustoms/admin/login.html
+ create mode 100644 sites/queenscustoms/admin/operations.html
+ create mode 100644 sites/queenscustoms/admin/setup-wizard.html
+ create mode 100644 sites/queenscustoms/qc-integration.js
+
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..ef6e274
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,13 @@
++# Queens Customs Admin Portal — environment variables
++# Copy to .env in the GoDaddy application settings or as a file on the server.
++# Never commit the actual .env to git.
++
++# Required: JWT signing secret — use a long random string
++ADMIN_JWT_SECRET=change-me-to-a-long-random-secret
++
++# Optional: override master admin seed credentials (defaults shown)
++ADMIN_SEED_EMAIL=mike@myk.com
++ADMIN_SEED_PASSWORD=87188718
++
++# GoDaddy sets PORT automatically — do not override in production
++# PORT=20010
+diff --git a/.gitignore b/.gitignore
+index 63df232..d765dc9 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -3,3 +3,4 @@ node_modules/
+ .DS_Store
+ npm-debug.log
+ dist/
++data/
+diff --git a/admin/auth.js b/admin/auth.js
+new file mode 100644
+index 0000000..08a17d0
+--- /dev/null
++++ b/admin/auth.js
+@@ -0,0 +1,39 @@
++/**
++ * Authentication utilities: bcrypt password hashing + JWT signing/verification.
++ */
++
++const crypto = require('crypto');
++const bcrypt = require('bcryptjs');
++const jwt = require('jsonwebtoken');
++
++const JWT_SECRET = process.env.ADMIN_JWT_SECRET || process.env.AUTH_SECRET || 'change-me-in-production';
++const JWT_EXPIRES_IN = process.env.ADMIN_JWT_EXPIRES_IN || '8h';
++const BCRYPT_ROUNDS = 12;
++
++async function hashPassword(plaintext) {
++  return bcrypt.hash(plaintext, BCRYPT_ROUNDS);
++}
++
++async function verifyPassword(plaintext, hash) {
++  return bcrypt.compare(plaintext, hash);
++}
++
++function signToken(payload) {
++  return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN, algorithm: 'HS256' });
++}
++
++function verifyToken(token) {
++  try {
++    return jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
++  } catch {
++    return null;
++  }
++}
++
++function extractBearerToken(req) {
++  const auth = String(req.headers.authorization || '').trim();
++  if (auth.toLowerCase().startsWith('bearer ')) return auth.slice(7).trim();
++  return null;
++}
++
++module.exports = { hashPassword, verifyPassword, signToken, verifyToken, extractBearerToken };
+diff --git a/admin/db.js b/admin/db.js
+new file mode 100644
+index 0000000..040a11a
+--- /dev/null
++++ b/admin/db.js
+@@ -0,0 +1,320 @@
++/**
++ * Simple JSON-based database for admin portal.
++ * Stores data in /data/*.json files to keep zero-native-dep philosophy.
++ * For production, swap this out for a real DB (Postgres/SQLite/etc).
++ */
++
++const fs = require('fs');
++const path = require('path');
++const crypto = require('crypto');
++
++// Store data one level up from /admin — i.e. the repo root /data/
++// GoDaddy Node PaaS has a writable filesystem at the app root.
++const DATA_DIR = path.join(__dirname, '..', 'data');
++
++function ensureDataDir() {
++  if (!fs.existsSync(DATA_DIR)) {
++    fs.mkdirSync(DATA_DIR, { recursive: true });
++  }
++}
++
++function readCollection(name) {
++  ensureDataDir();
++  const filePath = path.join(DATA_DIR, `${name}.json`);
++  if (!fs.existsSync(filePath)) return [];
++  try {
++    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
++  } catch {
++    return [];
++  }
++}
++
++function writeCollection(name, data) {
++  ensureDataDir();
++  const filePath = path.join(DATA_DIR, `${name}.json`);
++  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
++}
++
++function generateId() {
++  return crypto.randomBytes(12).toString('hex');
++}
++
++// ──────────────────────────────────────────────
++// Admin Users
++// ──────────────────────────────────────────────
++
++function getAdminUsers() {
++  return readCollection('admin_users');
++}
++
++function findAdminUserByEmail(email) {
++  return getAdminUsers().find(u => u.email.toLowerCase() === email.toLowerCase()) || null;
++}
++
++function findAdminUserById(id) {
++  return getAdminUsers().find(u => u.id === id) || null;
++}
++
++function createAdminUser({ email, passwordHash, role = 'admin', createdBy = 'system' }) {
++  const users = getAdminUsers();
++  if (users.find(u => u.email.toLowerCase() === email.toLowerCase())) {
++    throw new Error('Email already exists');
++  }
++  const user = {
++    id: generateId(),
++    email: email.toLowerCase().trim(),
++    passwordHash,
++    role,
++    createdBy,
++    createdAt: new Date().toISOString(),
++    updatedAt: new Date().toISOString(),
++  };
++  users.push(user);
++  writeCollection('admin_users', users);
++  return sanitizeUser(user);
++}
++
++function updateAdminUser(id, { email, passwordHash }) {
++  const users = getAdminUsers();
++  const idx = users.findIndex(u => u.id === id);
++  if (idx === -1) throw new Error('User not found');
++  if (email) {
++    const conflict = users.find(u => u.email.toLowerCase() === email.toLowerCase() && u.id !== id);
++    if (conflict) throw new Error('Email already taken by another admin');
++    users[idx].email = email.toLowerCase().trim();
++  }
++  if (passwordHash) users[idx].passwordHash = passwordHash;
++  users[idx].updatedAt = new Date().toISOString();
++  writeCollection('admin_users', users);
++  return sanitizeUser(users[idx]);
++}
++
++function deleteAdminUser(id) {
++  let users = getAdminUsers();
++  const user = users.find(u => u.id === id);
++  if (!user) throw new Error('User not found');
++  users = users.filter(u => u.id !== id);
++  writeCollection('admin_users', users);
++  return true;
++}
++
++function sanitizeUser(user) {
++  const { passwordHash: _p, ...safe } = user;
++  return safe;
++}
++
++// ──────────────────────────────────────────────
++// Orders (demo data store)
++// ──────────────────────────────────────────────
++
++function getOrders() {
++  const orders = readCollection('orders');
++  if (orders.length === 0) return seedOrders();
++  return orders;
++}
++
++function updateOrderStatus(id, status) {
++  const orders = getOrders();
++  const idx = orders.findIndex(o => o.id === id);
++  if (idx === -1) throw new Error('Order not found');
++  orders[idx].status = status;
++  orders[idx].updatedAt = new Date().toISOString();
++  writeCollection('orders', orders);
++  return orders[idx];
++}
++
++// ──────────────────────────────────────────────
++// Customer Inquiries
++// ──────────────────────────────────────────────
++
++function getInquiries() {
++  const items = readCollection('inquiries');
++  if (items.length === 0) return seedInquiries();
++  return items;
++}
++
++function updateInquiryStatus(id, { status, reply }) {
++  const items = getInquiries();
++  const idx = items.findIndex(i => i.id === id);
++  if (idx === -1) throw new Error('Inquiry not found');
++  if (status) items[idx].status = status;
++  if (reply) items[idx].reply = reply;
++  items[idx].updatedAt = new Date().toISOString();
++  writeCollection('inquiries', items);
++  return items[idx];
++}
++
++// ──────────────────────────────────────────────
++// Products
++// ──────────────────────────────────────────────
++
++function getProducts() {
++  const products = readCollection('products');
++  if (products.length === 0) return seedProducts();
++  return products;
++}
++
++function updateProduct(id, updates) {
++  const products = getProducts();
++  const idx = products.findIndex(p => p.id === id);
++  if (idx === -1) throw new Error('Product not found');
++  Object.assign(products[idx], updates, { updatedAt: new Date().toISOString() });
++  writeCollection('products', products);
++  return products[idx];
++}
++
++// ──────────────────────────────────────────────
++// Integration Settings
++// ──────────────────────────────────────────────
++
++function getIntegrationSettings() {
++  const settings = readCollection('integrations');
++  if (!Array.isArray(settings) || settings.length === 0) {
++    return defaultIntegrationSettings();
++  }
++  return settings[0];
++}
++
++function saveIntegrationSettings(updates) {
++  const current = getIntegrationSettings();
++  const merged = { ...current, ...updates, updatedAt: new Date().toISOString() };
++  writeCollection('integrations', [merged]);
++  return merged;
++}
++
++// ──────────────────────────────────────────────
++// Public website hooks (no-auth — called by the website)
++// ──────────────────────────────────────────────
++
++/**
++ * Create an order from a website checkout or cart submission.
++ * Called by POST /api/orders from the website JavaScript.
++ */
++function createOrder({ customer, items, total, channel = 'Website', notes = '' }) {
++  const orders = getOrders();
++  const lastNum = orders.reduce((max, o) => {
++    const n = parseInt(String(o.orderNumber).replace('QC-', ''), 10);
++    return isNaN(n) ? max : Math.max(max, n);
++  }, 10000);
++  const order = {
++    id: generateId(),
++    orderNumber: `QC-${lastNum + 1}`,
++    customer,
++    items,
++    total: String(total),
++    status: 'pending',
++    channel,
++    notes,
++    createdAt: new Date().toISOString(),
++    updatedAt: new Date().toISOString(),
++  };
++  orders.push(order);
++  writeCollection('orders', orders);
++  return order;
++}
++
++/**
++ * Create a customer inquiry from the website contact form.
++ * Called by POST /api/inquiries from the website JavaScript.
++ */
++function createInquiry({ name, email, subject, message, source = 'website' }) {
++  const items = getInquiries();
++  const inquiry = {
++    id: generateId(),
++    name,
++    email,
++    subject,
++    message,
++    status: 'new',
++    reply: '',
++    source,
++    createdAt: new Date().toISOString(),
++    updatedAt: new Date().toISOString(),
++  };
++  items.push(inquiry);
++  writeCollection('inquiries', items);
++  return inquiry;
++}
++
++// ──────────────────────────────────────────────
++// Demo seed data
++// ──────────────────────────────────────────────
++
++function seedOrders() {
++  const now = new Date();
++  const orders = [
++    { id: generateId(), orderNumber: 'QC-10001', customer: { name: 'Destiny Williams', email: 'destiny@example.com', address: '204 Briar Creek Rd, Houston, TX 77042' }, items: [{ name: 'Pink Glitter Queen Tumbler (30oz)', qty: 1, price: '40.00' }], total: '40.00', status: 'delivered', channel: 'TikTok Shop', notes: '', createdAt: new Date(now - 86400000 * 14).toISOString(), updatedAt: new Date(now - 86400000 * 10).toISOString() },
++    { id: generateId(), orderNumber: 'QC-10002', customer: { name: 'Janelle Moore', email: 'janelle@example.com', address: '892 Westheimer Rd, Houston, TX 77063' }, items: [{ name: "Queen's Duo Gift Set", qty: 1, price: '60.00' }], total: '60.00', status: 'shipped', channel: 'Website', notes: 'Gift wrap please!', createdAt: new Date(now - 86400000 * 10).toISOString(), updatedAt: new Date(now - 86400000 * 7).toISOString() },
++    { id: generateId(), orderNumber: 'QC-10003', customer: { name: 'Tiffany Banks', email: 'tiffany@example.com', address: '1100 Memorial Dr, Houston, TX 77007' }, items: [{ name: 'Custom Order Tumbler (30oz, Pink→Purple ombré, monogram)', qty: 1, price: '45.00' }], total: '45.00', status: 'processing', channel: 'Etsy', notes: 'Name: Tiffany in gold script', createdAt: new Date(now - 86400000 * 6).toISOString(), updatedAt: new Date(now - 86400000 * 5).toISOString() },
++    { id: generateId(), orderNumber: 'QC-10004', customer: { name: 'Aaliyah Jackson', email: 'aaliyah@example.com', address: '3300 Main St, Houston, TX 77002' }, items: [{ name: 'Americana Queen Tumbler (30oz)', qty: 2, price: '40.00' }], total: '80.00', status: 'pending', channel: 'TikTok Shop', notes: '', createdAt: new Date(now - 86400000 * 4).toISOString(), updatedAt: new Date(now - 86400000 * 4).toISOString() },
++    { id: generateId(), orderNumber: 'QC-10005', customer: { name: 'Shonda Price', email: 'shonda@example.com', address: '567 Bissonnet St, Houston, TX 77005' }, items: [{ name: 'Gothic Queen Tumbler (30oz)', qty: 1, price: '40.00' }, { name: 'Purple Reign Tumbler (30oz)', qty: 1, price: '40.00' }], total: '80.00', status: 'shipped', channel: 'Website', notes: '', createdAt: new Date(now - 86400000 * 3).toISOString(), updatedAt: new Date(now - 86400000 * 2).toISOString() },
++    { id: generateId(), orderNumber: 'QC-10006', customer: { name: 'Keisha Campbell', email: 'keisha@example.com', address: '770 Almeda Rd, Houston, TX 77054' }, items: [{ name: 'Glitter Royale Tumbler (30oz)', qty: 1, price: '40.00' }], total: '40.00', status: 'pending', channel: 'Amazon', notes: '', createdAt: new Date(now - 86400000 * 2).toISOString(), updatedAt: new Date(now - 86400000 * 2).toISOString() },
++    { id: generateId(), orderNumber: 'QC-10007', customer: { name: 'Monique Harris', email: 'monique@example.com', address: '2244 Lamar St, Houston, TX 77003' }, items: [{ name: 'Custom Order Tumbler (20oz skinny, black chrome, name plate)', qty: 1, price: '45.00' }], total: '45.00', status: 'processing', channel: 'Etsy', notes: 'Name: Monique, black metallic flake finish', createdAt: new Date(now - 86400000).toISOString(), updatedAt: new Date(now - 86400000).toISOString() },
++    { id: generateId(), orderNumber: 'QC-10008', customer: { name: 'Crystal Davis', email: 'crystal@example.com', address: '4500 OST Rd, Houston, TX 77021' }, items: [{ name: "Vibe Queen Special", qty: 1, price: '40.00' }], total: '40.00', status: 'pending', channel: 'TikTok Shop', notes: '', createdAt: new Date(now - 43200000).toISOString(), updatedAt: new Date(now - 43200000).toISOString() },
++  ];
++  writeCollection('orders', orders);
++  return orders;
++}
++
++function seedInquiries() {
++  const now = new Date();
++  const inquiries = [
++    { id: generateId(), name: 'Brianna Scott', email: 'brianna@example.com', subject: 'Custom order — bridesmaid tumblers', message: "Hi! I'm getting married in October and want to order 6 matching tumblers for my bridesmaids. Each needs a different name. Can you do champagne gold glitter with rose gold names? What's the price for 6?", status: 'new', reply: '', source: 'website', createdAt: new Date(now - 3600000 * 2).toISOString(), updatedAt: new Date(now - 3600000 * 2).toISOString() },
++    { id: generateId(), name: 'Latoya Freeman', email: 'latoya@example.com', subject: 'Order QC-10003 — shipping update?', message: "Hey! I ordered a custom tumbler (QC-10003) about 6 days ago. When will it ship? I need it for a birthday party this weekend.", status: 'pending', reply: '', source: 'website', createdAt: new Date(now - 86400000).toISOString(), updatedAt: new Date(now - 86400000).toISOString() },
++    { id: generateId(), name: 'Diamond Brooks', email: 'diamond@example.com', subject: 'Wholesale inquiry', message: "I run a boutique in Houston and would love to carry your tumblers. Do you offer wholesale pricing for resellers? Looking to start with 20–30 pieces.", status: 'new', reply: '', source: 'website', createdAt: new Date(now - 86400000 * 2).toISOString(), updatedAt: new Date(now - 86400000 * 2).toISOString() },
++    { id: generateId(), name: 'Tamara Jones', email: 'tamara@example.com', subject: 'Corporate gifting — holiday order', message: "I work in HR and we want to do custom tumblers for our team of 50 for the holidays. Logo + employee names. What's your lead time and bulk pricing for that quantity?", status: 'replied', reply: "Hi Tamara! We love corporate orders! For 50 pieces with logo + names, pricing is $35/ea ($1,750 total). Lead time is 3–4 weeks. Reply here or DM on TikTok to get started! 👑", source: 'website', createdAt: new Date(now - 86400000 * 4).toISOString(), updatedAt: new Date(now - 86400000 * 3).toISOString() },
++    { id: generateId(), name: 'Simone Walker', email: 'simone@example.com', subject: 'TikTok Live drop — missed item', message: "I was in your live last night and added the Pink Holographic Stunner to my cart but it sold out before I could check out. Will you restock or make another one like it?", status: 'new', reply: '', source: 'tiktok', createdAt: new Date(now - 86400000 * 5).toISOString(), updatedAt: new Date(now - 86400000 * 5).toISOString() },
++  ];
++  writeCollection('inquiries', inquiries);
++  return inquiries;
++}
++
++function seedProducts() {
++  const products = [
++    { id: generateId(), name: 'Pink Glitter Queen Tumbler', sku: 'QC-T001', price: '40.00', inventory: 1, category: '30oz Quencher', image: '', sales: 47, status: 'active', description: 'Chunky pink & holographic glitter. 30oz Stanley-style.', updatedAt: new Date().toISOString() },
++    { id: generateId(), name: 'Americana Queen Tumbler', sku: 'QC-T002', price: '40.00', inventory: 3, category: '30oz Quencher', image: '', sales: 31, status: 'active', description: 'Red, white & blue chunky glitter with patriotic design.', updatedAt: new Date().toISOString() },
++    { id: generateId(), name: 'Gothic Queen Tumbler', sku: 'QC-T003', price: '40.00', inventory: 1, category: '30oz Quencher', image: '', sales: 22, status: 'active', description: 'Deep red chunky glitter with gothic arch design.', updatedAt: new Date().toISOString() },
++    { id: generateId(), name: 'Purple Reign Tumbler', sku: 'QC-T004', price: '40.00', inventory: 4, category: '30oz Quencher', image: '', sales: 38, status: 'active', description: 'Deep purple with galaxy glitter. Queen energy only.', updatedAt: new Date().toISOString() },
++    { id: generateId(), name: "Queen's Duo Gift Set", sku: 'QC-G001', price: '60.00', inventory: 2, category: 'Gift Sets', image: '', sales: 19, status: 'active', description: 'Two matching custom tumblers — perfect for gifting. (Was $80)', updatedAt: new Date().toISOString() },
++    { id: generateId(), name: 'Vibe Queen Special', sku: 'QC-T005', price: '40.00', inventory: 1, category: '30oz Quencher', image: '', sales: 14, status: 'active', description: "One-of-a-kind custom epoxy pour — exclusively designed by The Vibe Queen.", updatedAt: new Date().toISOString() },
++    { id: generateId(), name: 'Glitter Royale Tumbler', sku: 'QC-T006', price: '40.00', inventory: 5, category: '30oz Quencher', image: '', sales: 27, status: 'active', description: 'Luxury chunky glitter pour with holographic finish.', updatedAt: new Date().toISOString() },
++    { id: generateId(), name: 'Custom Order Tumbler', sku: 'QC-CUSTOM', price: '40.00', inventory: 999, category: 'Custom Orders', image: '', sales: 112, status: 'active', description: 'You pick the colors, theme & vibe. We make the magic. From $40.', updatedAt: new Date().toISOString() },
++    { id: generateId(), name: 'Pink Holographic Stunner (20oz)', sku: 'QC-RTS001', price: '40.00', inventory: 0, category: 'Ready to Ship', image: '', sales: 9, status: 'out_of_stock', description: '20oz Skinny — pink holographic finish, ready to ship.', updatedAt: new Date().toISOString() },
++    { id: generateId(), name: 'Black Chrome Royale (40oz)', sku: 'QC-RTS002', price: '40.00', inventory: 1, category: 'Ready to Ship', image: '', sales: 6, status: 'active', description: '40oz Mega — black chrome mirror finish.', updatedAt: new Date().toISOString() },
++    { id: generateId(), name: 'Custom DIY Kit', sku: 'QC-DIY001', price: '10.00', inventory: 999, category: 'Digital Products', image: '', sales: 34, status: 'active', description: 'Personalized shopping list + step-by-step guide. Delivered via DM.', updatedAt: new Date().toISOString() },
++  ];
++  writeCollection('products', products);
++  return products;
++}
++
++function defaultIntegrationSettings() {
++  return {
++    etsy: { apiKey: '', shopId: '', connected: false },
++    amazon: { sellerId: '', mwsToken: '', connected: false },
++    tiktokShop: { appKey: '', appSecret: '', connected: false },
++    emailMarketing: { provider: 'mailchimp', apiKey: '', listId: '', connected: false },
++    stripe: { publishableKey: '', secretKey: '', webhookSecret: '', connected: false },
++    paypal: { clientId: '', clientSecret: '', connected: false },
++    updatedAt: new Date().toISOString(),
++  };
++}
++
++module.exports = {
++  getAdminUsers,
++  findAdminUserByEmail,
++  findAdminUserById,
++  createAdminUser,
++  updateAdminUser,
++  deleteAdminUser,
++  sanitizeUser,
++  getOrders,
++  createOrder,
++  updateOrderStatus,
++  getInquiries,
++  createInquiry,
++  updateInquiryStatus,
++  getProducts,
++  updateProduct,
++  getIntegrationSettings,
++  saveIntegrationSettings,
++};
+diff --git a/admin/index.js b/admin/index.js
+new file mode 100644
+index 0000000..f6929a7
+--- /dev/null
++++ b/admin/index.js
+@@ -0,0 +1,126 @@
++/**
++ * Admin Router — handles all /api/admin/* requests.
++ * Also handles public website endpoints: /api/orders, /api/inquiries, /api/products
++ * Called from the main server.js request handler.
++ *
++ * Public (no auth):
++ *   POST   /api/orders           — website checkout submits orders here
++ *   POST   /api/inquiries        — website contact form submits here
++ *   GET    /api/products         — public product catalog for the website
++ *
++ * Admin (JWT required):
++ *   POST   /api/admin/auth/login
++ *   GET    /api/admin/auth/me
++ *
++ *   GET    /api/admin/users
++ *   POST   /api/admin/users
++ *   PUT    /api/admin/users/:id
++ *   DELETE /api/admin/users/:id
++ *
++ *   GET    /api/admin/orders
++ *   PUT    /api/admin/orders/:id/status
++ *   GET    /api/admin/inquiries
++ *   PUT    /api/admin/inquiries/:id
++ *   GET    /api/admin/products
++ *   PUT    /api/admin/products/:id
++ *
++ *   GET    /api/admin/integrations
++ *   PUT    /api/admin/integrations
++ *   POST   /api/admin/integrations/test
++ */
++
++const authRoutes = require('./routes/auth');
++const userRoutes = require('./routes/users');
++const opsRoutes = require('./routes/operations');
++const wizardRoutes = require('./routes/setup-wizard');
++const websiteRoutes = require('./routes/website');
++
++/**
++ * Returns true if this router handled the request.
++ */
++async function adminRouter(req, res) {
++  const { method, url } = req;
++  // Strip query string for matching
++  const pathname = url.split('?')[0];
++
++  // ── Public Website Endpoints (no auth) ───────────────────────────────────
++  if (pathname === '/api/orders' && method === 'POST') {
++    return websiteRoutes.handleCreateOrder(req, res);
++  }
++  if (pathname === '/api/inquiries' && method === 'POST') {
++    return websiteRoutes.handleCreateInquiry(req, res);
++  }
++  if (pathname === '/api/products' && method === 'GET') {
++    return websiteRoutes.handleGetPublicProducts(req, res);
++  }
++
++  // ── Auth ──────────────────────────────────────────────────────────────────
++  if (pathname === '/api/admin/auth/login' && method === 'POST') {
++    return authRoutes.handleLogin(req, res);
++  }
++  if (pathname === '/api/admin/auth/logout' && method === 'POST') {
++    return authRoutes.handleLogout(req, res);
++  }
++  if (pathname === '/api/admin/auth/me' && method === 'GET') {
++    return authRoutes.handleMe(req, res);
++  }
++
++  // ── Admin Users ───────────────────────────────────────────────────────────
++  if (pathname === '/api/admin/users' && method === 'GET') {
++    return userRoutes.handleListUsers(req, res);
++  }
++  if (pathname === '/api/admin/users' && method === 'POST') {
++    return userRoutes.handleCreateUser(req, res);
++  }
++  const userPut = pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
++  if (userPut && method === 'PUT') {
++    return userRoutes.handleUpdateUser(req, res, userPut[1]);
++  }
++  const userDel = pathname.match(/^\/api\/admin\/users\/([^/]+)$/);
++  if (userDel && method === 'DELETE') {
++    return userRoutes.handleDeleteUser(req, res, userDel[1]);
++  }
++
++  // ── Orders ────────────────────────────────────────────────────────────────
++  if (pathname === '/api/admin/orders' && method === 'GET') {
++    return opsRoutes.handleGetOrders(req, res);
++  }
++  const orderStatus = pathname.match(/^\/api\/admin\/orders\/([^/]+)\/status$/);
++  if (orderStatus && method === 'PUT') {
++    return opsRoutes.handleUpdateOrderStatus(req, res, orderStatus[1]);
++  }
++
++  // ── Inquiries ─────────────────────────────────────────────────────────────
++  if (pathname === '/api/admin/inquiries' && method === 'GET') {
++    return opsRoutes.handleGetInquiries(req, res);
++  }
++  const inquiryUpdate = pathname.match(/^\/api\/admin\/inquiries\/([^/]+)$/);
++  if (inquiryUpdate && method === 'PUT') {
++    return opsRoutes.handleUpdateInquiry(req, res, inquiryUpdate[1]);
++  }
++
++  // ── Products ──────────────────────────────────────────────────────────────
++  if (pathname === '/api/admin/products' && method === 'GET') {
++    return opsRoutes.handleGetProducts(req, res);
++  }
++  const productUpdate = pathname.match(/^\/api\/admin\/products\/([^/]+)$/);
++  if (productUpdate && method === 'PUT') {
++    return opsRoutes.handleUpdateProduct(req, res, productUpdate[1]);
++  }
++
++  // ── Integrations ──────────────────────────────────────────────────────────
++  if (pathname === '/api/admin/integrations' && method === 'GET') {
++    return wizardRoutes.handleGetIntegrations(req, res);
++  }
++  if (pathname === '/api/admin/integrations' && method === 'PUT') {
++    return wizardRoutes.handleSaveIntegrations(req, res);
++  }
++  if (pathname === '/api/admin/integrations/test' && method === 'POST') {
++    return wizardRoutes.handleTestIntegration(req, res);
++  }
++
++  // Not matched
++  return false;
++}
++
++module.exports = { adminRouter };
+diff --git a/admin/middleware.js b/admin/middleware.js
+new file mode 100644
+index 0000000..872094d
+--- /dev/null
++++ b/admin/middleware.js
+@@ -0,0 +1,32 @@
++/**
++ * Admin auth middleware — attaches req.adminUser when JWT is valid.
++ * Responds 401 for missing/invalid tokens.
++ */
++
++const { verifyToken, extractBearerToken } = require('./auth');
++const { findAdminUserById } = require('./db');
++
++function requireAdmin(req, res, next) {
++  const token = extractBearerToken(req);
++  if (!token) {
++    res.writeHead(401, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'Authentication required' }));
++    return;
++  }
++  const payload = verifyToken(token);
++  if (!payload || !payload.sub) {
++    res.writeHead(401, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'Invalid or expired token' }));
++    return;
++  }
++  const user = findAdminUserById(payload.sub);
++  if (!user) {
++    res.writeHead(401, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'Admin user not found' }));
++    return;
++  }
++  req.adminUser = user;
++  next();
++}
++
++module.exports = { requireAdmin };
+diff --git a/admin/routes/auth.js b/admin/routes/auth.js
+new file mode 100644
+index 0000000..4105d1e
+--- /dev/null
++++ b/admin/routes/auth.js
+@@ -0,0 +1,68 @@
++/**
++ * Admin Auth Routes
++ * POST /api/admin/auth/login   — authenticate admin, return JWT
++ * POST /api/admin/auth/logout  — client-side only; server confirms
++ * GET  /api/admin/auth/me      — return current admin info
++ */
++
++const { hashPassword, verifyPassword, signToken } = require('../auth');
++const { requireAdmin } = require('../middleware');
++const { findAdminUserByEmail } = require('../db');
++
++async function handleLogin(req, res) {
++  let body = '';
++  req.on('data', chunk => { body += chunk; });
++  await new Promise(resolve => req.on('end', resolve));
++
++  let email, password;
++  try {
++    const parsed = JSON.parse(body);
++    email = parsed.email;
++    password = parsed.password;
++  } catch {
++    res.writeHead(400, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'Invalid request body' }));
++    return;
++  }
++
++  if (!email || !password) {
++    res.writeHead(400, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'Email and password are required' }));
++    return;
++  }
++
++  const user = findAdminUserByEmail(email);
++  // Always run bcrypt to prevent timing attacks even if user not found
++  const dummyHash = '$2a$12$dummy.hash.to.prevent.timing.attacks.abcdefghij';
++  const passwordOk = user
++    ? await verifyPassword(password, user.passwordHash)
++    : await verifyPassword(password, dummyHash).then(() => false);
++
++  if (!user || !passwordOk) {
++    res.writeHead(401, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'Invalid email or password' }));
++    return;
++  }
++
++  const token = signToken({ sub: user.id, email: user.email, role: user.role });
++  res.writeHead(200, { 'Content-Type': 'application/json' });
++  res.end(JSON.stringify({
++    token,
++    user: { id: user.id, email: user.email, role: user.role },
++  }));
++}
++
++function handleLogout(req, res) {
++  res.writeHead(200, { 'Content-Type': 'application/json' });
++  res.end(JSON.stringify({ message: 'Logged out successfully' }));
++}
++
++function handleMe(req, res) {
++  requireAdmin(req, res, () => {
++    const { passwordHash: _p, ...safeUser } = req.adminUser;
++    res.writeHead(200, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ user: safeUser }));
++  });
++}
++
++module.exports = { handleLogin, handleLogout, handleMe };
+diff --git a/admin/routes/operations.js b/admin/routes/operations.js
+new file mode 100644
+index 0000000..f3e9642
+--- /dev/null
++++ b/admin/routes/operations.js
+@@ -0,0 +1,131 @@
++/**
++ * Store Operations Routes
++ * GET  /api/admin/orders              — list all orders
++ * PUT  /api/admin/orders/:id/status   — update order status
++ * GET  /api/admin/inquiries           — list all customer inquiries
++ * PUT  /api/admin/inquiries/:id       — update inquiry status/reply
++ * GET  /api/admin/products            — list all products
++ * PUT  /api/admin/products/:id        — update product details
++ */
++
++const { requireAdmin } = require('../middleware');
++const { getOrders, updateOrderStatus, getInquiries, updateInquiryStatus, getProducts, updateProduct } = require('../db');
++
++function readBody(req) {
++  return new Promise((resolve, reject) => {
++    let body = '';
++    req.on('data', chunk => { body += chunk; });
++    req.on('end', () => {
++      try { resolve(JSON.parse(body || '{}')); } catch (e) { reject(e); }
++    });
++    req.on('error', reject);
++  });
++}
++
++function handleGetOrders(req, res) {
++  requireAdmin(req, res, () => {
++    const orders = getOrders();
++    const stats = {
++      total: orders.length,
++      pending: orders.filter(o => o.status === 'pending').length,
++      processing: orders.filter(o => o.status === 'processing').length,
++      shipped: orders.filter(o => o.status === 'shipped').length,
++      delivered: orders.filter(o => o.status === 'delivered').length,
++      revenue: orders.reduce((sum, o) => sum + parseFloat(o.total || 0), 0).toFixed(2),
++    };
++    res.writeHead(200, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ orders, stats }));
++  });
++}
++
++async function handleUpdateOrderStatus(req, res, id) {
++  requireAdmin(req, res, async () => {
++    let body;
++    try { body = await readBody(req); } catch {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: 'Invalid request body' }));
++      return;
++    }
++    try {
++      const order = updateOrderStatus(id, body.status);
++      res.writeHead(200, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify(order));
++    } catch (err) {
++      res.writeHead(404, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: err.message }));
++    }
++  });
++}
++
++function handleGetInquiries(req, res) {
++  requireAdmin(req, res, () => {
++    const items = getInquiries();
++    res.writeHead(200, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify(items));
++  });
++}
++
++async function handleUpdateInquiry(req, res, id) {
++  requireAdmin(req, res, async () => {
++    let body;
++    try { body = await readBody(req); } catch {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: 'Invalid request body' }));
++      return;
++    }
++    try {
++      const item = updateInquiryStatus(id, body);
++      res.writeHead(200, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify(item));
++    } catch (err) {
++      res.writeHead(404, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: err.message }));
++    }
++  });
++}
++
++function handleGetProducts(req, res) {
++  requireAdmin(req, res, () => {
++    const products = getProducts();
++    const stats = {
++      total: products.length,
++      active: products.filter(p => p.status === 'active').length,
++      outOfStock: products.filter(p => p.status === 'out_of_stock').length,
++      totalSales: products.reduce((sum, p) => sum + (p.sales || 0), 0),
++      totalRevenue: products.reduce((sum, p) => sum + ((p.sales || 0) * parseFloat(p.price || 0)), 0).toFixed(2),
++    };
++    res.writeHead(200, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ products, stats }));
++  });
++}
++
++async function handleUpdateProduct(req, res, id) {
++  requireAdmin(req, res, async () => {
++    let body;
++    try { body = await readBody(req); } catch {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: 'Invalid request body' }));
++      return;
++    }
++    const allowed = ['name', 'price', 'inventory', 'status', 'image', 'category'];
++    const updates = {};
++    allowed.forEach(k => { if (body[k] !== undefined) updates[k] = body[k]; });
++    try {
++      const product = updateProduct(id, updates);
++      res.writeHead(200, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify(product));
++    } catch (err) {
++      res.writeHead(404, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: err.message }));
++    }
++  });
++}
++
++module.exports = {
++  handleGetOrders,
++  handleUpdateOrderStatus,
++  handleGetInquiries,
++  handleUpdateInquiry,
++  handleGetProducts,
++  handleUpdateProduct,
++};
+diff --git a/admin/routes/setup-wizard.js b/admin/routes/setup-wizard.js
+new file mode 100644
+index 0000000..6e61e26
+--- /dev/null
++++ b/admin/routes/setup-wizard.js
+@@ -0,0 +1,121 @@
++/**
++ * Setup Wizard / Integration Routes
++ * GET  /api/admin/integrations         — get all integration settings
++ * PUT  /api/admin/integrations         — save integration settings
++ * POST /api/admin/integrations/test    — test a specific integration connection
++ */
++
++const { requireAdmin } = require('../middleware');
++const { getIntegrationSettings, saveIntegrationSettings } = require('../db');
++
++function readBody(req) {
++  return new Promise((resolve, reject) => {
++    let body = '';
++    req.on('data', chunk => { body += chunk; });
++    req.on('end', () => {
++      try { resolve(JSON.parse(body || '{}')); } catch (e) { reject(e); }
++    });
++    req.on('error', reject);
++  });
++}
++
++function handleGetIntegrations(req, res) {
++  requireAdmin(req, res, () => {
++    const settings = getIntegrationSettings();
++    // Mask secret keys in response — show only first/last 4 chars
++    const masked = maskSecrets(settings);
++    res.writeHead(200, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify(masked));
++  });
++}
++
++async function handleSaveIntegrations(req, res) {
++  requireAdmin(req, res, async () => {
++    let body;
++    try { body = await readBody(req); } catch {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: 'Invalid request body' }));
++      return;
++    }
++    const current = getIntegrationSettings();
++    // Merge: don't overwrite existing secret with masked placeholder
++    const merged = deepMergeSkipMasked(current, body);
++    const saved = saveIntegrationSettings(merged);
++    res.writeHead(200, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify(maskSecrets(saved)));
++  });
++}
++
++async function handleTestIntegration(req, res) {
++  requireAdmin(req, res, async () => {
++    let body;
++    try { body = await readBody(req); } catch {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: 'Invalid request body' }));
++      return;
++    }
++    const { provider } = body;
++    const settings = getIntegrationSettings();
++    const config = settings[provider];
++    if (!config) {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: `Unknown provider: ${provider}` }));
++      return;
++    }
++    // Simulate connection test — replace with real API calls
++    const hasCredentials = Object.values(config).some(v => typeof v === 'string' && v.length > 0);
++    if (!hasCredentials) {
++      res.writeHead(200, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ success: false, message: 'No credentials configured yet' }));
++      return;
++    }
++    res.writeHead(200, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ success: true, message: `${provider} credentials saved. Live connection test requires valid API keys.` }));
++  });
++}
++
++// ── helpers ────────────────────────────────────────────────────────────────
++
++const SECRET_FIELDS = ['apiKey', 'appSecret', 'secretKey', 'clientSecret', 'webhookSecret', 'mwsToken', 'accessToken'];
++
++function maskValue(val) {
++  if (typeof val !== 'string' || val.length < 8) return val;
++  return val.slice(0, 4) + '••••••••' + val.slice(-4);
++}
++
++function maskSecrets(obj, depth = 0) {
++  if (depth > 4 || typeof obj !== 'object' || obj === null) return obj;
++  const out = {};
++  for (const [k, v] of Object.entries(obj)) {
++    if (SECRET_FIELDS.includes(k) && typeof v === 'string' && v.length > 0) {
++      out[k] = maskValue(v);
++    } else if (typeof v === 'object' && v !== null) {
++      out[k] = maskSecrets(v, depth + 1);
++    } else {
++      out[k] = v;
++    }
++  }
++  return out;
++}
++
++function isMasked(val) {
++  return typeof val === 'string' && val.includes('••••••••');
++}
++
++function deepMergeSkipMasked(target, source, depth = 0) {
++  if (depth > 4) return source;
++  const out = { ...target };
++  for (const [k, v] of Object.entries(source)) {
++    if (SECRET_FIELDS.includes(k) && isMasked(v)) {
++      // Keep the existing unmasked value
++      continue;
++    } else if (typeof v === 'object' && v !== null && typeof target[k] === 'object') {
++      out[k] = deepMergeSkipMasked(target[k], v, depth + 1);
++    } else {
++      out[k] = v;
++    }
++  }
++  return out;
++}
++
++module.exports = { handleGetIntegrations, handleSaveIntegrations, handleTestIntegration };
+diff --git a/admin/routes/users.js b/admin/routes/users.js
+new file mode 100644
+index 0000000..09d29a6
+--- /dev/null
++++ b/admin/routes/users.js
+@@ -0,0 +1,117 @@
++/**
++ * Admin User Management Routes (CRUD)
++ * GET    /api/admin/users        — list all admin users
++ * POST   /api/admin/users        — create a new admin user
++ * PUT    /api/admin/users/:id    — update email and/or password
++ * DELETE /api/admin/users/:id    — remove an admin user
++ */
++
++const { hashPassword } = require('../auth');
++const { requireAdmin } = require('../middleware');
++const { getAdminUsers, createAdminUser, updateAdminUser, deleteAdminUser, sanitizeUser } = require('../db');
++
++function readBody(req) {
++  return new Promise((resolve, reject) => {
++    let body = '';
++    req.on('data', chunk => { body += chunk; });
++    req.on('end', () => {
++      try { resolve(JSON.parse(body)); } catch (e) { reject(e); }
++    });
++    req.on('error', reject);
++  });
++}
++
++async function handleListUsers(req, res) {
++  requireAdmin(req, res, () => {
++    const users = getAdminUsers().map(u => sanitizeUser(u));
++    res.writeHead(200, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify(users));
++  });
++}
++
++async function handleCreateUser(req, res) {
++  requireAdmin(req, res, async () => {
++    let body;
++    try { body = await readBody(req); } catch {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: 'Invalid request body' }));
++      return;
++    }
++
++    const { email, password } = body;
++    if (!email || !password) {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: 'Email and password are required' }));
++      return;
++    }
++    if (password.length < 8) {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: 'Password must be at least 8 characters' }));
++      return;
++    }
++
++    try {
++      const passwordHash = await hashPassword(password);
++      const user = createAdminUser({ email, passwordHash, createdBy: req.adminUser.id });
++      res.writeHead(201, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify(user));
++    } catch (err) {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: err.message }));
++    }
++  });
++}
++
++async function handleUpdateUser(req, res, id) {
++  requireAdmin(req, res, async () => {
++    let body;
++    try { body = await readBody(req); } catch {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: 'Invalid request body' }));
++      return;
++    }
++
++    const updates = {};
++    if (body.email) updates.email = body.email;
++    if (body.password) {
++      if (body.password.length < 8) {
++        res.writeHead(400, { 'Content-Type': 'application/json' });
++        res.end(JSON.stringify({ error: 'Password must be at least 8 characters' }));
++        return;
++      }
++      updates.passwordHash = await hashPassword(body.password);
++    }
++
++    try {
++      const user = updateAdminUser(id, updates);
++      res.writeHead(200, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify(user));
++    } catch (err) {
++      const code = err.message === 'User not found' ? 404 : 400;
++      res.writeHead(code, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: err.message }));
++    }
++  });
++}
++
++function handleDeleteUser(req, res, id) {
++  requireAdmin(req, res, () => {
++    // Prevent self-deletion
++    if (req.adminUser.id === id) {
++      res.writeHead(400, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: 'Cannot delete your own account' }));
++      return;
++    }
++    try {
++      deleteAdminUser(id);
++      res.writeHead(200, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ message: 'Admin user deleted' }));
++    } catch (err) {
++      const code = err.message === 'User not found' ? 404 : 400;
++      res.writeHead(code, { 'Content-Type': 'application/json' });
++      res.end(JSON.stringify({ error: err.message }));
++    }
++  });
++}
++
++module.exports = { handleListUsers, handleCreateUser, handleUpdateUser, handleDeleteUser };
+diff --git a/admin/routes/website.js b/admin/routes/website.js
+new file mode 100644
+index 0000000..639e884
+--- /dev/null
++++ b/admin/routes/website.js
+@@ -0,0 +1,130 @@
++/**
++ * Public Website Routes — no authentication required.
++ * These endpoints are called directly from the queenscustoms.shop frontend.
++ *
++ * POST /api/orders      — customer places an order (cart checkout)
++ * POST /api/inquiries   — customer submits the contact form
++ * GET  /api/products    — public product listing (for the shop page)
++ *
++ * Security notes:
++ *  - No sensitive data is exposed by these endpoints.
++ *  - Rate-limiting and CORS are handled at the server level.
++ *  - These endpoints only WRITE to their own collections; they cannot
++ *    touch admin users, integration secrets, or other admin data.
++ */
++
++const { createOrder, createInquiry, getProducts } = require('../db');
++
++function readBody(req) {
++  return new Promise((resolve, reject) => {
++    let body = '';
++    req.on('data', chunk => { body += chunk; });
++    req.on('end', () => {
++      try { resolve(JSON.parse(body || '{}')); } catch (e) { reject(e); }
++    });
++    req.on('error', reject);
++  });
++}
++
++/**
++ * POST /api/orders
++ * Body: { customer: { name, email, address }, items: [{ name, qty, price }], total, channel?, notes? }
++ */
++async function handleCreateOrder(req, res) {
++  let body;
++  try { body = await readBody(req); } catch {
++    res.writeHead(400, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'Invalid request body' }));
++    return;
++  }
++
++  const { customer, items, total, channel, notes } = body;
++
++  if (!customer?.name || !customer?.email) {
++    res.writeHead(400, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'customer.name and customer.email are required' }));
++    return;
++  }
++  if (!Array.isArray(items) || items.length === 0) {
++    res.writeHead(400, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'items array is required and must not be empty' }));
++    return;
++  }
++  if (!total) {
++    res.writeHead(400, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'total is required' }));
++    return;
++  }
++
++  try {
++    const order = createOrder({ customer, items, total, channel, notes });
++    res.writeHead(201, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({
++      success: true,
++      orderNumber: order.orderNumber,
++      orderId: order.id,
++      message: 'Order received! The Vibe Queen will be in touch within 24 hours. 👑',
++    }));
++  } catch (err) {
++    res.writeHead(500, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'Failed to create order' }));
++  }
++}
++
++/**
++ * POST /api/inquiries
++ * Body: { name, email, subject, message, source? }
++ */
++async function handleCreateInquiry(req, res) {
++  let body;
++  try { body = await readBody(req); } catch {
++    res.writeHead(400, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'Invalid request body' }));
++    return;
++  }
++
++  const { name, email, subject, message, source } = body;
++
++  if (!name || !email || !message) {
++    res.writeHead(400, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'name, email, and message are required' }));
++    return;
++  }
++
++  try {
++    const inquiry = createInquiry({
++      name,
++      email,
++      subject: subject || 'Contact Form Submission',
++      message,
++      source: source || 'website',
++    });
++    res.writeHead(201, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({
++      success: true,
++      id: inquiry.id,
++      message: "Message received! The Vibe Queen responds within 24 hours. 👑",
++    }));
++  } catch (err) {
++    res.writeHead(500, { 'Content-Type': 'application/json' });
++    res.end(JSON.stringify({ error: 'Failed to submit inquiry' }));
++  }
++}
++
++/**
++ * GET /api/products
++ * Returns the public product catalog (no auth needed).
++ */
++function handleGetPublicProducts(req, res) {
++  const products = getProducts()
++    .filter(p => p.status === 'active')
++    .map(({ id, name, sku, price, inventory, category, image, description, status }) => ({
++      id, name, sku, price, inventory, category, image, description,
++      inStock: inventory > 0,
++      lowStock: inventory > 0 && inventory <= 3,
++    }));
++  res.writeHead(200, { 'Content-Type': 'application/json' });
++  res.end(JSON.stringify(products));
++}
++
++module.exports = { handleCreateOrder, handleCreateInquiry, handleGetPublicProducts };
+diff --git a/admin/seed.js b/admin/seed.js
+new file mode 100644
+index 0000000..24db623
+--- /dev/null
++++ b/admin/seed.js
+@@ -0,0 +1,54 @@
++/**
++ * Admin seed script — creates the master admin account from env vars.
++ * Run once: node admin/seed.js
++ * Or called automatically on first server start if no admins exist.
++ */
++
++const { hashPassword } = require('./auth');
++const { getAdminUsers, createAdminUser } = require('./db');
++
++async function seedMasterAdmin() {
++  const existing = getAdminUsers();
++  if (existing.length > 0) {
++    console.log('[SEED] Admin users already exist — skipping seed.');
++    return;
++  }
++
++  const email = process.env.ADMIN_SEED_EMAIL || 'mike@myk.com';
++  const password = process.env.ADMIN_SEED_PASSWORD || process.env.ADMIN_PASSWORD || '87188718';
++
++  if (!password) {
++    console.error('[SEED] ADMIN_SEED_PASSWORD env var is not set. Cannot seed admin.');
++    process.exit(1);
++  }
++
++  const passwordHash = await hashPassword(password);
++  const user = createAdminUser({ email, passwordHash, role: 'superadmin', createdBy: 'seed' });
++
++  console.log(`[SEED] ✅ Master admin created: ${user.email} (role: ${user.role})`);
++}
++
++// Run standalone: node admin/seed.js
++if (require.main === module) {
++  // Load .env from root if present
++  try {
++    const fs = require('fs');
++    const path = require('path');
++    const envPath = path.join(__dirname, '..', '.env');
++    if (fs.existsSync(envPath)) {
++      fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
++        const trimmed = line.trim();
++        if (trimmed && !trimmed.startsWith('#') && trimmed.includes('=')) {
++          const [k, ...v] = trimmed.split('=');
++          if (k) process.env[k.trim()] = v.join('=').trim();
++        }
++      });
++    }
++  } catch (e) { /* ignore */ }
++
++  seedMasterAdmin()
++    .then(() => process.exit(0))
++    .catch(err => { console.error('[SEED] Error:', err.message); process.exit(1); });
++}
++
++module.exports = { seedMasterAdmin };
+diff --git a/package-lock.json b/package-lock.json
+index 185626f..ae239df 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -8,12 +8,14 @@
+       "name": "myk-hub",
+       "version": "1.0.0",
+       "dependencies": {
++        "bcryptjs": "^3.0.3",
+         "express": "^4.18.2",
+         "http-proxy-middleware": "^3.0.5",
++        "jsonwebtoken": "^9.0.3",
+         "vite": "^6.0.0"
+       },
+       "engines": {
+-        "node": ">=18.0.0"
++        "node": ">=18"
+       }
+     },
+     "node_modules/@esbuild/aix-ppc64": {
+@@ -517,9 +519,6 @@
+       "cpu": [
+         "arm"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -533,9 +532,6 @@
+       "cpu": [
+         "arm"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -549,9 +545,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -565,9 +558,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -581,9 +571,6 @@
+       "cpu": [
+         "loong64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -597,9 +584,6 @@
+       "cpu": [
+         "loong64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -613,9 +597,6 @@
+       "cpu": [
+         "ppc64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -629,9 +610,6 @@
+       "cpu": [
+         "ppc64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -645,9 +623,6 @@
+       "cpu": [
+         "riscv64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -661,9 +636,6 @@
+       "cpu": [
+         "riscv64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -677,9 +649,6 @@
+       "cpu": [
+         "s390x"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -693,9 +662,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -709,9 +675,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MIT",
+       "optional": true,
+       "os": [
+@@ -839,6 +802,15 @@
+       "integrity": "sha512-PCVAQswWemu6UdxsDFFX/+gVeYqKAod3D3UVm91jHwynguOwAvYPhx8nNlM++NqRcK6CxxpUafjmhIdKiHibqg==",
+       "license": "MIT"
+     },
++    "node_modules/bcryptjs": {
++      "version": "3.0.3",
++      "resolved": "https://registry.npmjs.org/bcryptjs/-/bcryptjs-3.0.3.tgz",
++      "integrity": "sha512-GlF5wPWnSa/X5LKM1o0wz0suXIINz1iHRLvTS+sLyi7XPbe5ycmYI3DlZqVGZZtDgl4DmasFg7gOB3JYbphV5g==",
++      "license": "BSD-3-Clause",
++      "bin": {
++        "bcrypt": "bin/bcrypt"
++      }
++    },
+     "node_modules/body-parser": {
+       "version": "1.20.5",
+       "resolved": "https://registry.npmjs.org/body-parser/-/body-parser-1.20.5.tgz",
+@@ -875,6 +847,12 @@
+         "node": ">=8"
+       }
+     },
++    "node_modules/buffer-equal-constant-time": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/buffer-equal-constant-time/-/buffer-equal-constant-time-1.0.1.tgz",
++      "integrity": "sha512-zRpUiDwd/xk6ADqPMATG8vc9VPrkck7T07OIx0gnjmJAnHnTVXNQG3vfvWNuiZIkwu9KrKdA1iJKfsfTVxE6NA==",
++      "license": "BSD-3-Clause"
++    },
+     "node_modules/bytes": {
+       "version": "3.1.2",
+       "resolved": "https://registry.npmjs.org/bytes/-/bytes-3.1.2.tgz",
+@@ -991,6 +969,15 @@
+         "node": ">= 0.4"
+       }
+     },
++    "node_modules/ecdsa-sig-formatter": {
++      "version": "1.0.11",
++      "resolved": "https://registry.npmjs.org/ecdsa-sig-formatter/-/ecdsa-sig-formatter-1.0.11.tgz",
++      "integrity": "sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==",
++      "license": "Apache-2.0",
++      "dependencies": {
++        "safe-buffer": "^5.0.1"
++      }
++    },
+     "node_modules/ee-first": {
+       "version": "1.1.1",
+       "resolved": "https://registry.npmjs.org/ee-first/-/ee-first-1.1.1.tgz",
+@@ -1448,6 +1435,97 @@
+         "node": ">=0.10.0"
+       }
+     },
++    "node_modules/jsonwebtoken": {
++      "version": "9.0.3",
++      "resolved": "https://registry.npmjs.org/jsonwebtoken/-/jsonwebtoken-9.0.3.tgz",
++      "integrity": "sha512-MT/xP0CrubFRNLNKvxJ2BYfy53Zkm++5bX9dtuPbqAeQpTVe0MQTFhao8+Cp//EmJp244xt6Drw/GVEGCUj40g==",
++      "license": "MIT",
++      "dependencies": {
++        "jws": "^4.0.1",
++        "lodash.includes": "^4.3.0",
++        "lodash.isboolean": "^3.0.3",
++        "lodash.isinteger": "^4.0.4",
++        "lodash.isnumber": "^3.0.3",
++        "lodash.isplainobject": "^4.0.6",
++        "lodash.isstring": "^4.0.1",
++        "lodash.once": "^4.0.0",
++        "ms": "^2.1.1",
++        "semver": "^7.5.4"
++      },
++      "engines": {
++        "node": ">=12",
++        "npm": ">=6"
++      }
++    },
++    "node_modules/jsonwebtoken/node_modules/ms": {
++      "version": "2.1.3",
++      "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
++      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
++      "license": "MIT"
++    },
++    "node_modules/jwa": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/jwa/-/jwa-2.0.1.tgz",
++      "integrity": "sha512-hRF04fqJIP8Abbkq5NKGN0Bbr3JxlQ+qhZufXVr0DvujKy93ZCbXZMHDL4EOtodSbCWxOqR8MS1tXA5hwqCXDg==",
++      "license": "MIT",
++      "dependencies": {
++        "buffer-equal-constant-time": "^1.0.1",
++        "ecdsa-sig-formatter": "1.0.11",
++        "safe-buffer": "^5.0.1"
++      }
++    },
++    "node_modules/jws": {
++      "version": "4.0.1",
++      "resolved": "https://registry.npmjs.org/jws/-/jws-4.0.1.tgz",
++      "integrity": "sha512-EKI/M/yqPncGUUh44xz0PxSidXFr/+r0pA70+gIYhjv+et7yxM+s29Y+VGDkovRofQem0fs7Uvf4+YmAdyRduA==",
++      "license": "MIT",
++      "dependencies": {
++        "jwa": "^2.0.1",
++        "safe-buffer": "^5.0.1"
++      }
++    },
++    "node_modules/lodash.includes": {
++      "version": "4.3.0",
++      "resolved": "https://registry.npmjs.org/lodash.includes/-/lodash.includes-4.3.0.tgz",
++      "integrity": "sha512-W3Bx6mdkRTGtlJISOvVD/lbqjTlPPUDTMnlXZFnVwi9NKJ6tiAk6LVdlhZMm17VZisqhKcgzpO5Wz91PCt5b0w==",
++      "license": "MIT"
++    },
++    "node_modules/lodash.isboolean": {
++      "version": "3.0.3",
++      "resolved": "https://registry.npmjs.org/lodash.isboolean/-/lodash.isboolean-3.0.3.tgz",
++      "integrity": "sha512-Bz5mupy2SVbPHURB98VAcw+aHh4vRV5IPNhILUCsOzRmsTmSQ17jIuqopAentWoehktxGd9e/hbIXq980/1QJg==",
++      "license": "MIT"
++    },
++    "node_modules/lodash.isinteger": {
++      "version": "4.0.4",
++      "resolved": "https://registry.npmjs.org/lodash.isinteger/-/lodash.isinteger-4.0.4.tgz",
++      "integrity": "sha512-DBwtEWN2caHQ9/imiNeEA5ys1JoRtRfY3d7V9wkqtbycnAmTvRRmbHKDV4a0EYc678/dia0jrte4tjYwVBaZUA==",
++      "license": "MIT"
++    },
++    "node_modules/lodash.isnumber": {
++      "version": "3.0.3",
++      "resolved": "https://registry.npmjs.org/lodash.isnumber/-/lodash.isnumber-3.0.3.tgz",
++      "integrity": "sha512-QYqzpfwO3/CWf3XP+Z+tkQsfaLL/EnUlXWVkIk5FUPc4sBdTehEqZONuyRt2P67PXAk+NXmTBcc97zw9t1FQrw==",
++      "license": "MIT"
++    },
++    "node_modules/lodash.isplainobject": {
++      "version": "4.0.6",
++      "resolved": "https://registry.npmjs.org/lodash.isplainobject/-/lodash.isplainobject-4.0.6.tgz",
++      "integrity": "sha512-oSXzaWypCMHkPC3NvBEaPHf0KsA5mvPrOPgQWDsbg8n7orZ290M0BmC/jgRZ4vcJ6DTAhjrsSYgdsW/F+MFOBA==",
++      "license": "MIT"
++    },
++    "node_modules/lodash.isstring": {
++      "version": "4.0.1",
++      "resolved": "https://registry.npmjs.org/lodash.isstring/-/lodash.isstring-4.0.1.tgz",
++      "integrity": "sha512-0wJxfxH1wgO3GrbuP+dTTk7op+6L41QCXbGINEmD+ny/G/eCqGzxyCsh7159S+mgDDcoarnBw6PC1PS5+wUGgw==",
++      "license": "MIT"
++    },
++    "node_modules/lodash.once": {
++      "version": "4.1.1",
++      "resolved": "https://registry.npmjs.org/lodash.once/-/lodash.once-4.1.1.tgz",
++      "integrity": "sha512-Sb487aTOCr9drQVL8pIxOzVhafOjZN9UU54hiN8PU3uAiSV7lx1yYNpbNmex2PK6dSJoNTSJUUswT651yww3Mg==",
++      "license": "MIT"
++    },
+     "node_modules/math-intrinsics": {
+       "version": "1.1.0",
+       "resolved": "https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz",
+@@ -1776,6 +1854,18 @@
+       "integrity": "sha512-YZo3K82SD7Riyi0E1EQPojLz7kpepnSQI9IyPbHHg1XXXevb5dJI7tpyN2ADxGcQbHG7vcyRHk0cbwqcQriUtg==",
+       "license": "MIT"
+     },
++    "node_modules/semver": {
++      "version": "7.8.5",
++      "resolved": "https://registry.npmjs.org/semver/-/semver-7.8.5.tgz",
++      "integrity": "sha512-Y7/KDsb8LjooZpwaqGyulO6DQlksgCncchHGk+sZIY4SBvUocMBEFH5Ur1fI4dV+Jvl0w6cjvucaIi40puRioA==",
++      "license": "ISC",
++      "bin": {
++        "semver": "bin/semver.js"
++      },
++      "engines": {
++        "node": ">=10"
++      }
++    },
+     "node_modules/send": {
+       "version": "0.19.2",
+       "resolved": "https://registry.npmjs.org/send/-/send-0.19.2.tgz",
+diff --git a/package.json b/package.json
+index 9dfe929..f30de2d 100644
+--- a/package.json
++++ b/package.json
+@@ -1,7 +1,7 @@
+ {
+   "name": "myk-hub",
+   "version": "1.0.0",
+-  "description": "MYK multi-domain hub \u2014 serves patemusic.live, myk.ac, and ltibyjmichael.com from one Node.js app",
++  "description": "MYK multi-domain hub — serves patemusic.live, myk.ac, and ltibyjmichael.com from one Node.js app",
+   "type": "commonjs",
+   "main": "server.js",
+   "scripts": {
+@@ -13,8 +13,10 @@
+     "node": ">=18"
+   },
+   "dependencies": {
++    "bcryptjs": "^3.0.3",
+     "express": "^4.18.2",
+     "http-proxy-middleware": "^3.0.5",
++    "jsonwebtoken": "^9.0.3",
+     "vite": "^6.0.0"
+   },
+   "repository": {
+diff --git a/server.js b/server.js
+index a281e38..ace7d65 100755
+--- a/server.js
++++ b/server.js
+@@ -4,6 +4,11 @@ const path = require('path');
+ const { createProxyMiddleware } = require('http-proxy-middleware');
+ const app = express();
+ 
++// ── Queens Customs Admin Portal ────────────────────────────────────────────────
++const { adminRouter } = require('./admin/index');
++const { seedMasterAdmin } = require('./admin/seed');
++seedMasterAdmin().catch(err => console.error('[QC-Admin] Seed error:', err.message));
++
+ const BRAIN_PREFIX = (process.env.BRAIN_PROXY_PREFIX || '/brain').replace(/\/$/, '');
+ const BRAIN_PROXY_FILE = path.join(__dirname, 'config', 'brain-proxy-target.json');
+ 
+@@ -38,6 +43,10 @@ const SITE_MAP = {
+   'www.ltibyjmichael.com': 'lti',
+   'designbyjmichael.com': 'lti',
+   'www.designbyjmichael.com': 'lti',
++  // Queens Customs Shop
++  'queenscustoms.shop': 'queenscustoms',
++  'www.queenscustoms.shop': 'queenscustoms',
++  'admin.queenscustoms.shop': 'queenscustoms',
+ };
+ 
+ const SITES_ROOT = path.join(__dirname, 'sites');
+@@ -198,6 +207,53 @@ function isProxiedBrainPath(req) {
+   return isBrainPath(req) || isSiteEditorProxyPath(req);
+ }
+ 
++// ── Queens Customs Admin subdomain detection ───────────────────────────────────
++function isAdminSubdomain(req) {
++  return hostCandidates(req).some(h => h === 'admin.queenscustoms.shop');
++}
++
++// Admin API routes (JWT-protected) — handle before static serving
++// Note: no express.json() here — admin routes self-parse request bodies via stream
++app.use(async (req, res, next) => {
++  const pathname = req.path || '/';
++  // Public website hooks (callable from any QC origin)
++  const isPublicWebhook = (
++    (pathname === '/api/orders' && req.method === 'POST') ||
++    (pathname === '/api/inquiries' && req.method === 'POST') ||
++    (pathname === '/api/products' && req.method === 'GET')
++  );
++  // Admin API and admin subdomain paths
++  const isAdminPath = pathname.startsWith('/api/admin/') || isPublicWebhook;
++
++  if (!isAdminSubdomain(req) && !isAdminPath) return next();
++
++  const handled = await adminRouter(req, res);
++  if (handled !== false) return;
++  next();
++});
++
++// Serve /admin/* HTML pages on the admin subdomain
++app.use((req, res, next) => {
++  if (!isAdminSubdomain(req)) return next();
++
++  const pathname = req.path || '/';
++  const pageMap = {
++    '/':                  'admin/login.html',
++    '/login':             'admin/login.html',
++    '/admin':             'admin/login.html',
++    '/admin/':            'admin/login.html',
++    '/admin/login':       'admin/login.html',
++    '/admin/operations':  'admin/operations.html',
++    '/admin/setup-wizard': 'admin/setup-wizard.html',
++    '/qc-integration.js': 'qc-integration.js',
++  };
++  const file = pageMap[pathname.replace(/\/$/, '') || '/'];
++  if (file) {
++    return res.sendFile(path.join(__dirname, 'sites', 'queenscustoms', file));
++  }
++  next();
++});
++
+ // Per-domain static file serving
+ app.use((req, res, next) => {
+   if (BRAIN_ENABLED && isProxiedBrainPath(req)) return next();
+diff --git a/sites/queenscustoms/admin/login.html b/sites/queenscustoms/admin/login.html
+new file mode 100644
+index 0000000..bd579ad
+--- /dev/null
++++ b/sites/queenscustoms/admin/login.html
+@@ -0,0 +1,204 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++  <meta charset="UTF-8" />
++  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++  <title>Queens Customs — Admin Login</title>
++  <script src="https://cdn.tailwindcss.com"></script>
++  <script>
++    tailwind.config = {
++      theme: {
++        extend: {
++          colors: {
++            brand: {
++              navy: '#0C0A15',
++              dark: '#04030A',
++              accent: '#3B82F6',
++              purple: '#6366F1',
++              amber: '#F59E0B',
++              teal: '#0D9488',
++              surface: '#14122C',
++              gold: '#D4AF37',
++            }
++          }
++        }
++      }
++    }
++  </script>
++  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
++  <style>
++    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #04030A; }
++    .glass { background: rgba(12,10,21,0.85); backdrop-filter: blur(20px); border: 1px solid rgba(59,130,246,0.15); }
++    .input-field { background: rgba(4,3,10,0.8); border: 1px solid rgba(59,130,246,0.2); transition: all 0.2s; }
++    .input-field:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }
++    .btn-primary { background: linear-gradient(135deg, #3B82F6, #6366F1); transition: all 0.2s; }
++    .btn-primary:hover { opacity: 0.9; transform: translateY(-1px); box-shadow: 0 4px 20px rgba(59,130,246,0.4); }
++    .btn-primary:active { transform: translateY(0); }
++    @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
++    .float { animation: float 4s ease-in-out infinite; }
++    @keyframes glow { 0%,100%{opacity:0.4} 50%{opacity:0.8} }
++    .glow { animation: glow 3s ease-in-out infinite; }
++    .shake { animation: shake 0.4s ease-in-out; }
++    @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
++  </style>
++</head>
++<body class="min-h-screen flex items-center justify-center overflow-hidden relative">
++
++  <!-- Ambient background glows -->
++  <div class="absolute inset-0 overflow-hidden pointer-events-none">
++    <div class="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-blue-600/10 blur-3xl glow"></div>
++    <div class="absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-purple-600/10 blur-3xl glow" style="animation-delay:1.5s"></div>
++    <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 rounded-full bg-indigo-600/5 blur-2xl"></div>
++  </div>
++
++  <div class="w-full max-w-md px-4 relative z-10">
++
++    <!-- Logo / Brand -->
++    <div class="text-center mb-8">
++      <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-2xl shadow-blue-900/50 mb-4 float">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-8 h-8 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
++      </div>
++      <h1 class="text-2xl font-extrabold text-white tracking-tight">Queens Customs</h1>
++      <p class="text-sm text-slate-400 font-medium mt-1">Admin Portal Access</p>
++    </div>
++
++    <!-- Login Card -->
++    <div class="glass rounded-2xl p-8 shadow-2xl">
++      <h2 class="text-xl font-bold text-white mb-1">Welcome back</h2>
++      <p class="text-slate-400 text-sm mb-6">Enter your admin credentials to continue</p>
++
++      <div id="error-msg" class="hidden mb-4 p-3 rounded-xl bg-red-950/60 border border-red-800/50 text-red-300 text-sm font-medium flex items-center gap-2">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
++        <span id="error-text"></span>
++      </div>
++
++      <form id="login-form" onsubmit="handleLogin(event)">
++        <div class="mb-4">
++          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Email Address</label>
++          <div class="relative">
++            <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
++            <input type="email" id="email" class="input-field w-full pl-10 pr-4 py-3 rounded-xl text-white text-sm font-medium placeholder-slate-600" placeholder="admin@queenscustoms.shop" autocomplete="email" required />
++          </div>
++        </div>
++
++        <div class="mb-6">
++          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Password</label>
++          <div class="relative">
++            <svg xmlns="http://www.w3.org/2000/svg" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
++            <input type="password" id="password" class="input-field w-full pl-10 pr-12 py-3 rounded-xl text-white text-sm font-medium placeholder-slate-600" placeholder="••••••••" autocomplete="current-password" required />
++            <button type="button" onclick="togglePassword()" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors p-1" tabindex="-1">
++              <svg id="eye-icon" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
++            </button>
++          </div>
++        </div>
++
++        <button type="submit" id="submit-btn" class="btn-primary w-full py-3 rounded-xl text-white font-bold text-sm flex items-center justify-center gap-2">
++          <span id="btn-text">Sign In to Admin Portal</span>
++          <svg id="btn-spinner" class="hidden w-4 h-4 animate-spin" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
++        </button>
++      </form>
++
++      <!-- Portal Selection -->
++      <div id="portal-select" class="hidden mt-6">
++        <p class="text-center text-xs text-slate-500 font-medium mb-3 uppercase tracking-wider">Select Portal</p>
++        <div class="grid grid-cols-2 gap-3">
++          <a href="/admin/operations" class="flex flex-col items-center p-4 rounded-xl border border-slate-800 hover:border-blue-600/50 hover:bg-blue-950/20 transition-all group cursor-pointer">
++            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-slate-400 group-hover:text-blue-400 mb-2 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
++            <span class="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">Operations</span>
++            <span class="text-[10px] text-slate-500 mt-0.5">Dashboard</span>
++          </a>
++          <a href="/admin/setup-wizard" class="flex flex-col items-center p-4 rounded-xl border border-slate-800 hover:border-purple-600/50 hover:bg-purple-950/20 transition-all group cursor-pointer">
++            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-slate-400 group-hover:text-purple-400 mb-2 transition-colors" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
++            <span class="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">Setup</span>
++            <span class="text-[10px] text-slate-500 mt-0.5">Integrations</span>
++          </a>
++        </div>
++      </div>
++    </div>
++
++    <p class="text-center text-xs text-slate-600 mt-6">Queens Customs Shop &copy; 2024 — Secure Admin Access</p>
++  </div>
++
++  <script>
++    const API_BASE = '';
++
++    // Check if already logged in
++    (function checkExistingSession() {
++      const token = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token');
++      if (!token) return;
++      // Verify token is still valid
++      fetch(`${API_BASE}/api/admin/auth/me`, {
++        headers: { 'Authorization': `Bearer ${token}` }
++      }).then(r => {
++        if (r.ok) showPortalSelect();
++      }).catch(() => {});
++    })();
++
++    function showPortalSelect() {
++      document.getElementById('login-form').style.display = 'none';
++      document.getElementById('portal-select').classList.remove('hidden');
++    }
++
++    function showError(msg) {
++      const el = document.getElementById('error-msg');
++      document.getElementById('error-text').textContent = msg;
++      el.classList.remove('hidden');
++      document.getElementById('login-form').classList.add('shake');
++      setTimeout(() => document.getElementById('login-form').classList.remove('shake'), 500);
++    }
++
++    function hideError() {
++      document.getElementById('error-msg').classList.add('hidden');
++    }
++
++    function togglePassword() {
++      const inp = document.getElementById('password');
++      inp.type = inp.type === 'password' ? 'text' : 'password';
++    }
++
++    async function handleLogin(e) {
++      e.preventDefault();
++      hideError();
++
++      const email = document.getElementById('email').value.trim();
++      const password = document.getElementById('password').value;
++      const btn = document.getElementById('submit-btn');
++      const spinner = document.getElementById('btn-spinner');
++      const btnText = document.getElementById('btn-text');
++
++      btn.disabled = true;
++      spinner.classList.remove('hidden');
++      btnText.textContent = 'Signing in…';
++
++      try {
++        const res = await fetch(`${API_BASE}/api/admin/auth/login`, {
++          method: 'POST',
++          headers: { 'Content-Type': 'application/json' },
++          body: JSON.stringify({ email, password }),
++        });
++        const data = await res.json();
++
++        if (!res.ok) {
++          showError(data.error || 'Login failed');
++          return;
++        }
++
++        // Persist token
++        sessionStorage.setItem('admin_token', data.token);
++        localStorage.setItem('admin_token', data.token);
++        localStorage.setItem('admin_user', JSON.stringify(data.user));
++
++        btnText.textContent = '✓ Authenticated!';
++        setTimeout(showPortalSelect, 500);
++
++      } catch (err) {
++        showError('Network error — please check server connection');
++      } finally {
++        btn.disabled = false;
++        spinner.classList.add('hidden');
++        if (btnText.textContent === 'Signing in…') btnText.textContent = 'Sign In to Admin Portal';
++      }
++    }
++  </script>
++</body>
++</html>
+diff --git a/sites/queenscustoms/admin/operations.html b/sites/queenscustoms/admin/operations.html
+new file mode 100644
+index 0000000..67a6619
+--- /dev/null
++++ b/sites/queenscustoms/admin/operations.html
+@@ -0,0 +1,647 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++  <meta charset="UTF-8" />
++  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++  <title>Queens Customs — Operations Dashboard</title>
++  <script src="https://cdn.tailwindcss.com"></script>
++  <script>
++    tailwind.config = {
++      theme: {
++        extend: {
++          colors: {
++            brand: { navy: '#0C0A15', dark: '#04030A', accent: '#3B82F6', purple: '#6366F1', surface: '#14122C' }
++          }
++        }
++      }
++    }
++  </script>
++  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
++  <style>
++    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #04030A; }
++    .mono { font-family: 'JetBrains Mono', monospace; }
++    .glass { background: rgba(12,10,21,0.7); backdrop-filter: blur(16px); border: 1px solid rgba(59,130,246,0.12); }
++    .card { background: #0C0A15; border: 1px solid rgba(255,255,255,0.06); }
++    ::-webkit-scrollbar { width: 5px; height: 5px; }
++    ::-webkit-scrollbar-track { background: #0C0A15; }
++    ::-webkit-scrollbar-thumb { background: #2E294E; border-radius: 4px; }
++    .tab-btn.active { background: rgba(59,130,246,0.15); border-color: rgba(59,130,246,0.4); color: #60a5fa; }
++    .status-pill { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 9999px; font-size: 11px; font-weight: 600; text-transform: capitalize; }
++    .status-pending   { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
++    .status-processing { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
++    .status-shipped   { background: rgba(139,92,246,0.15); color: #a78bfa; border: 1px solid rgba(139,92,246,0.3); }
++    .status-delivered { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
++    .status-new   { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
++    .status-replied { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
++    .status-active { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
++    .status-out_of_stock { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
++    .modal-overlay { background: rgba(4,3,10,0.85); backdrop-filter: blur(8px); }
++    tr:hover td { background: rgba(59,130,246,0.04); }
++    .sidebar-link { transition: all 0.15s; border-radius: 0.75rem; }
++    .sidebar-link:hover { background: rgba(59,130,246,0.1); color: #93c5fd; }
++    .sidebar-link.active { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
++    @media (max-width: 1024px) { #sidebar { transform: translateX(-100%); transition: transform 0.3s; } #sidebar.open { transform: translateX(0); } }
++  </style>
++</head>
++<body class="text-gray-100 min-h-screen flex">
++
++  <!-- SIDEBAR -->
++  <aside id="sidebar" class="fixed inset-y-0 left-0 w-64 z-40 flex flex-col glass border-r border-slate-800/50 py-6 px-4">
++    <div class="flex items-center gap-3 mb-8 px-2">
++      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
++      </div>
++      <div>
++        <div class="text-sm font-bold text-white">Queens Customs</div>
++        <div class="text-[10px] text-blue-400 font-semibold uppercase tracking-wider">Operations</div>
++      </div>
++    </div>
++
++    <nav class="flex-1 space-y-1">
++      <div class="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-3 mb-2">Dashboard</div>
++      <button onclick="showTab('overview')" id="nav-overview" class="sidebar-link active w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
++        Overview
++      </button>
++      <button onclick="showTab('orders')" id="nav-orders" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
++        Orders
++        <span id="orders-badge" class="ml-auto text-[10px] font-bold bg-blue-600 text-white px-2 py-0.5 rounded-full hidden"></span>
++      </button>
++      <button onclick="showTab('inquiries')" id="nav-inquiries" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
++        Inquiries
++        <span id="inquiries-badge" class="ml-auto text-[10px] font-bold bg-amber-500 text-black px-2 py-0.5 rounded-full hidden"></span>
++      </button>
++      <button onclick="showTab('products')" id="nav-products" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
++        Products
++      </button>
++
++      <div class="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-3 mb-2 mt-5">Admin</div>
++      <button onclick="showTab('users')" id="nav-users" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
++        Admin Users
++      </button>
++    </nav>
++
++    <div class="mt-auto space-y-2 border-t border-slate-800/50 pt-4">
++      <a href="/admin/setup-wizard" class="sidebar-link flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
++        Setup Wizard
++      </a>
++      <button onclick="logout()" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-red-400 hover:bg-red-950/20 hover:text-red-300">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
++        Sign Out
++      </button>
++      <div class="px-3 py-2">
++        <div class="text-[10px] text-slate-600 font-medium" id="user-display">Loading…</div>
++      </div>
++    </div>
++  </aside>
++
++  <!-- MOBILE OVERLAY -->
++  <div id="overlay" class="hidden fixed inset-0 bg-black/60 z-30 lg:hidden" onclick="closeSidebar()"></div>
++
++  <!-- MAIN CONTENT -->
++  <main class="flex-1 lg:ml-64 min-h-screen flex flex-col">
++
++    <!-- TOP BAR -->
++    <header class="sticky top-0 z-20 flex items-center justify-between px-6 py-4 border-b border-slate-800/50 bg-brand-dark/80 backdrop-blur-md">
++      <div class="flex items-center gap-3">
++        <button class="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400" onclick="toggleSidebar()">
++          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
++        </button>
++        <div>
++          <h1 id="page-title" class="text-lg font-bold text-white">Overview</h1>
++          <p class="text-xs text-slate-500" id="page-subtitle">Store performance summary</p>
++        </div>
++      </div>
++      <div class="flex items-center gap-3">
++        <div class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-950/40 border border-emerald-800/50 text-emerald-400 text-xs font-semibold">
++          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
++          Live
++        </div>
++        <button onclick="refreshData()" class="p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white hover:border-blue-600/50 transition-all">
++          <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
++        </button>
++      </div>
++    </header>
++
++    <!-- TAB CONTENT -->
++    <div class="flex-1 p-6">
++
++      <!-- ── OVERVIEW ─────────────────────────────────── -->
++      <section id="tab-overview" class="tab-section">
++        <div id="overview-stats" class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
++          <!-- filled by JS -->
++        </div>
++        <div class="grid lg:grid-cols-2 gap-4">
++          <div class="card rounded-2xl p-5">
++            <h3 class="font-bold text-slate-200 mb-4 text-sm flex items-center gap-2">
++              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/></svg>
++              Recent Orders
++            </h3>
++            <div id="recent-orders-list"></div>
++          </div>
++          <div class="card rounded-2xl p-5">
++            <h3 class="font-bold text-slate-200 mb-4 text-sm flex items-center gap-2">
++              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
++              New Inquiries
++            </h3>
++            <div id="recent-inquiries-list"></div>
++          </div>
++        </div>
++      </section>
++
++      <!-- ── ORDERS ─────────────────────────────────────── -->
++      <section id="tab-orders" class="tab-section hidden">
++        <div class="card rounded-2xl overflow-hidden">
++          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800/50">
++            <h3 class="font-bold text-slate-200 text-sm">All Orders</h3>
++            <input oninput="filterTable('orders-tbody', this.value)" placeholder="Search orders…" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs outline-none focus:border-blue-600/50 w-48" />
++          </div>
++          <div class="overflow-x-auto">
++            <table class="w-full text-sm">
++              <thead><tr class="border-b border-slate-800/50">
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Order #</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Customer</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell">Channel</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Total</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Date</th>
++                <th class="px-5 py-3"></th>
++              </tr></thead>
++              <tbody id="orders-tbody"></tbody>
++            </table>
++          </div>
++        </div>
++      </section>
++
++      <!-- ── INQUIRIES ──────────────────────────────────── -->
++      <section id="tab-inquiries" class="tab-section hidden">
++        <div class="card rounded-2xl overflow-hidden">
++          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800/50">
++            <h3 class="font-bold text-slate-200 text-sm">Customer Inquiries</h3>
++            <input oninput="filterTable('inquiries-tbody', this.value)" placeholder="Search…" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs outline-none focus:border-blue-600/50 w-48" />
++          </div>
++          <div class="overflow-x-auto">
++            <table class="w-full text-sm">
++              <thead><tr class="border-b border-slate-800/50">
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">From</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Subject</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Date</th>
++                <th class="px-5 py-3"></th>
++              </tr></thead>
++              <tbody id="inquiries-tbody"></tbody>
++            </table>
++          </div>
++        </div>
++      </section>
++
++      <!-- ── PRODUCTS ───────────────────────────────────── -->
++      <section id="tab-products" class="tab-section hidden">
++        <div class="card rounded-2xl overflow-hidden">
++          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800/50">
++            <h3 class="font-bold text-slate-200 text-sm">Product Inventory</h3>
++            <input oninput="filterTable('products-tbody', this.value)" placeholder="Search products…" class="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs outline-none focus:border-blue-600/50 w-48" />
++          </div>
++          <div class="overflow-x-auto">
++            <table class="w-full text-sm">
++              <thead><tr class="border-b border-slate-800/50">
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Product</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider hidden md:table-cell">SKU</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Price</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Stock</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Sales</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
++                <th class="px-5 py-3"></th>
++              </tr></thead>
++              <tbody id="products-tbody"></tbody>
++            </table>
++          </div>
++        </div>
++      </section>
++
++      <!-- ── ADMIN USERS ────────────────────────────────── -->
++      <section id="tab-users" class="tab-section hidden">
++        <div class="card rounded-2xl overflow-hidden">
++          <div class="flex items-center justify-between px-5 py-4 border-b border-slate-800/50">
++            <h3 class="font-bold text-slate-200 text-sm">Admin Users</h3>
++            <button onclick="openUserModal()" class="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all">
++              <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
++              Add Admin
++            </button>
++          </div>
++          <div class="overflow-x-auto">
++            <table class="w-full text-sm">
++              <thead><tr class="border-b border-slate-800/50">
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Email</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider">Role</th>
++                <th class="text-left px-5 py-3 text-[11px] font-bold text-slate-500 uppercase tracking-wider hidden lg:table-cell">Created</th>
++                <th class="px-5 py-3"></th>
++              </tr></thead>
++              <tbody id="users-tbody"></tbody>
++            </table>
++          </div>
++        </div>
++      </section>
++
++    </div><!-- /p-6 -->
++  </main>
++
++  <!-- ── MODALS ─────────────────────────────────────────── -->
++
++  <!-- Inquiry Reply Modal -->
++  <div id="inquiry-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
++    <div class="modal-overlay absolute inset-0" onclick="closeModal('inquiry-modal')"></div>
++    <div class="relative w-full max-w-lg glass rounded-2xl p-6 shadow-2xl">
++      <h3 class="font-bold text-white text-lg mb-4" id="inquiry-modal-title">Inquiry Details</h3>
++      <div id="inquiry-modal-body" class="mb-4"></div>
++      <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Reply Message</label>
++      <textarea id="inquiry-reply" rows="4" class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm outline-none focus:border-blue-600/50 resize-none mb-4" placeholder="Type your reply to the customer…"></textarea>
++      <div class="flex gap-3">
++        <button onclick="submitReply()" class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm transition-all">Send Reply</button>
++        <button onclick="closeModal('inquiry-modal')" class="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 font-semibold text-sm hover:bg-slate-800 transition-all">Cancel</button>
++      </div>
++    </div>
++  </div>
++
++  <!-- Order Status Modal -->
++  <div id="order-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
++    <div class="modal-overlay absolute inset-0" onclick="closeModal('order-modal')"></div>
++    <div class="relative w-full max-w-md glass rounded-2xl p-6 shadow-2xl">
++      <h3 class="font-bold text-white text-lg mb-4">Update Order Status</h3>
++      <div id="order-modal-info" class="mb-4 p-3 rounded-xl bg-slate-900 border border-slate-800 text-sm text-slate-300"></div>
++      <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">New Status</label>
++      <select id="order-status-select" class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm outline-none focus:border-blue-600/50 mb-4">
++        <option value="pending">Pending</option>
++        <option value="processing">Processing</option>
++        <option value="shipped">Shipped</option>
++        <option value="delivered">Delivered</option>
++      </select>
++      <div class="flex gap-3">
++        <button onclick="submitOrderStatus()" class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm transition-all">Update Status</button>
++        <button onclick="closeModal('order-modal')" class="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 font-semibold text-sm hover:bg-slate-800 transition-all">Cancel</button>
++      </div>
++    </div>
++  </div>
++
++  <!-- Product Edit Modal -->
++  <div id="product-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
++    <div class="modal-overlay absolute inset-0" onclick="closeModal('product-modal')"></div>
++    <div class="relative w-full max-w-md glass rounded-2xl p-6 shadow-2xl">
++      <h3 class="font-bold text-white text-lg mb-4">Edit Product</h3>
++      <input type="hidden" id="product-edit-id" />
++      <div class="grid grid-cols-2 gap-3 mb-4">
++        <div>
++          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Price ($)</label>
++          <input type="number" id="product-edit-price" step="0.01" class="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm outline-none focus:border-blue-600/50" />
++        </div>
++        <div>
++          <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Inventory</label>
++          <input type="number" id="product-edit-inventory" class="w-full px-3 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm outline-none focus:border-blue-600/50" />
++        </div>
++      </div>
++      <div class="mb-4">
++        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">Status</label>
++        <select id="product-edit-status" class="w-full px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm outline-none focus:border-blue-600/50">
++          <option value="active">Active</option>
++          <option value="out_of_stock">Out of Stock</option>
++          <option value="discontinued">Discontinued</option>
++        </select>
++      </div>
++      <div class="flex gap-3">
++        <button onclick="submitProductEdit()" class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm transition-all">Save Changes</button>
++        <button onclick="closeModal('product-modal')" class="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 font-semibold text-sm hover:bg-slate-800 transition-all">Cancel</button>
++      </div>
++    </div>
++  </div>
++
++  <!-- Admin User Modal -->
++  <div id="user-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4">
++    <div class="modal-overlay absolute inset-0" onclick="closeModal('user-modal')"></div>
++    <div class="relative w-full max-w-md glass rounded-2xl p-6 shadow-2xl">
++      <h3 id="user-modal-title" class="font-bold text-white text-lg mb-4">Add Admin User</h3>
++      <input type="hidden" id="user-edit-id" />
++      <div class="mb-4">
++        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Email Address</label>
++        <input type="email" id="user-edit-email" class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm outline-none focus:border-blue-600/50" placeholder="admin@queenscustoms.shop" />
++      </div>
++      <div class="mb-4">
++        <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Password <span id="user-pw-hint" class="normal-case font-normal text-slate-500">(leave blank to keep unchanged)</span></label>
++        <input type="password" id="user-edit-password" class="w-full px-4 py-3 rounded-xl bg-slate-900 border border-slate-800 text-white text-sm outline-none focus:border-blue-600/50" placeholder="Minimum 8 characters" />
++      </div>
++      <div id="user-modal-error" class="hidden mb-3 p-2.5 rounded-xl bg-red-950/50 border border-red-800/50 text-red-300 text-xs"></div>
++      <div class="flex gap-3">
++        <button onclick="submitUserForm()" class="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm transition-all">Save</button>
++        <button onclick="closeModal('user-modal')" class="px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 font-semibold text-sm hover:bg-slate-800 transition-all">Cancel</button>
++      </div>
++    </div>
++  </div>
++
++<script>
++const API = '';
++let TOKEN = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token');
++let currentInquiryId = null;
++let currentOrderId = null;
++
++// ── Auth guard ────────────────────────────────────────────────────────────────
++if (!TOKEN) { window.location.href = '/admin/login'; }
++
++async function api(path, opts = {}) {
++  const res = await fetch(API + path, {
++    ...opts,
++    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}`, ...(opts.headers || {}) },
++  });
++  if (res.status === 401) { logout(); return null; }
++  return res;
++}
++
++function logout() {
++  sessionStorage.removeItem('admin_token'); localStorage.removeItem('admin_token');
++  window.location.href = '/admin/login';
++}
++
++// ── Tab system ────────────────────────────────────────────────────────────────
++const tabs = ['overview', 'orders', 'inquiries', 'products', 'users'];
++const titles = { overview: ['Overview','Store performance summary'], orders: ['Orders','Manage fulfillment & status'], inquiries: ['Customer Inquiries','View & reply to messages'], products: ['Products','Inventory & pricing management'], users: ['Admin Users','Manage portal access'] };
++
++function showTab(name) {
++  tabs.forEach(t => {
++    document.getElementById(`tab-${t}`).classList.toggle('hidden', t !== name);
++    const nav = document.getElementById(`nav-${t}`);
++    if (nav) { nav.classList.toggle('active', t === name); nav.classList.toggle('text-slate-400', t !== name); }
++  });
++  const [title, sub] = titles[name];
++  document.getElementById('page-title').textContent = title;
++  document.getElementById('page-subtitle').textContent = sub;
++  if (name === 'overview') loadOverview();
++  if (name === 'orders') loadOrders();
++  if (name === 'inquiries') loadInquiries();
++  if (name === 'products') loadProducts();
++  if (name === 'users') loadUsers();
++  closeSidebar();
++}
++
++// ── Data loading ──────────────────────────────────────────────────────────────
++let ordersData = [], inquiriesData = [], productsData = [];
++
++async function loadOverview() {
++  const [o, i, p] = await Promise.all([loadOrders(true), loadInquiries(true), loadProducts(true)]);
++  const stats = document.getElementById('overview-stats');
++  stats.innerHTML = `
++    <div class="card rounded-2xl p-5">
++      <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Total Revenue</div>
++      <div class="text-2xl font-extrabold text-white mono">$${o.stats?.revenue || '0.00'}</div>
++      <div class="text-xs text-slate-500 mt-1">${o.stats?.total || 0} orders total</div>
++    </div>
++    <div class="card rounded-2xl p-5">
++      <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Pending Orders</div>
++      <div class="text-2xl font-extrabold text-amber-400 mono">${o.stats?.pending || 0}</div>
++      <div class="text-xs text-slate-500 mt-1">${o.stats?.processing || 0} processing</div>
++    </div>
++    <div class="card rounded-2xl p-5">
++      <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">New Inquiries</div>
++      <div class="text-2xl font-extrabold text-blue-400 mono">${(i||[]).filter(x=>x.status==='new').length}</div>
++      <div class="text-xs text-slate-500 mt-1">${(i||[]).length} total messages</div>
++    </div>
++    <div class="card rounded-2xl p-5">
++      <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">Products</div>
++      <div class="text-2xl font-extrabold text-emerald-400 mono">${p.stats?.active || 0}</div>
++      <div class="text-xs text-slate-500 mt-1">${p.stats?.outOfStock || 0} out of stock</div>
++    </div>`;
++
++  // Recent
++  document.getElementById('recent-orders-list').innerHTML = ordersData.slice(0,5).map(o => `
++    <div class="flex items-center justify-between py-2.5 border-b border-slate-800/50 last:border-0">
++      <div>
++        <div class="text-sm font-semibold text-white mono">${o.orderNumber}</div>
++        <div class="text-xs text-slate-500">${o.customer.name}</div>
++      </div>
++      <span class="status-pill status-${o.status}">${o.status}</span>
++    </div>`).join('');
++
++  document.getElementById('recent-inquiries-list').innerHTML = inquiriesData.filter(i=>i.status==='new').slice(0,5).map(i => `
++    <div class="flex items-center justify-between py-2.5 border-b border-slate-800/50 last:border-0">
++      <div>
++        <div class="text-sm font-semibold text-white">${i.name}</div>
++        <div class="text-xs text-slate-500 truncate max-w-[200px]">${i.subject}</div>
++      </div>
++      <button onclick="showTab('inquiries')" class="text-xs text-blue-400 hover:text-blue-300 font-semibold">Reply →</button>
++    </div>`).join('') || '<p class="text-slate-600 text-sm py-4 text-center">No new inquiries</p>';
++}
++
++async function loadOrders(returnData = false) {
++  const res = await api('/api/admin/orders');
++  if (!res) return {};
++  const data = await res.json();
++  ordersData = data.orders || [];
++
++  if (!returnData) {
++    const badge = document.getElementById('orders-badge');
++    badge.textContent = data.stats?.pending || 0;
++    badge.classList.toggle('hidden', !data.stats?.pending);
++
++    const tbody = document.getElementById('orders-tbody');
++    if (tbody) tbody.innerHTML = ordersData.map(o => `
++      <tr>
++        <td class="px-5 py-3.5 mono text-xs font-semibold text-blue-400">${o.orderNumber}</td>
++        <td class="px-5 py-3.5"><div class="font-semibold text-sm text-white">${o.customer.name}</div><div class="text-[11px] text-slate-500">${o.customer.email}</div></td>
++        <td class="px-5 py-3.5 text-slate-400 text-xs hidden md:table-cell">${o.channel}</td>
++        <td class="px-5 py-3.5 mono text-sm font-bold text-white">$${o.total}</td>
++        <td class="px-5 py-3.5"><span class="status-pill status-${o.status}">${o.status}</span></td>
++        <td class="px-5 py-3.5 text-slate-500 text-xs hidden lg:table-cell">${new Date(o.createdAt).toLocaleDateString()}</td>
++        <td class="px-5 py-3.5"><button onclick="openOrderModal('${o.id}','${o.orderNumber}','${o.status}')" class="text-xs text-blue-400 hover:text-blue-300 font-semibold whitespace-nowrap">Update →</button></td>
++      </tr>`).join('');
++  }
++  return data;
++}
++
++async function loadInquiries(returnData = false) {
++  const res = await api('/api/admin/inquiries');
++  if (!res) return [];
++  inquiriesData = await res.json();
++
++  if (!returnData) {
++    const newCount = inquiriesData.filter(i => i.status === 'new').length;
++    const badge = document.getElementById('inquiries-badge');
++    badge.textContent = newCount;
++    badge.classList.toggle('hidden', !newCount);
++
++    const tbody = document.getElementById('inquiries-tbody');
++    if (tbody) tbody.innerHTML = inquiriesData.map(i => `
++      <tr>
++        <td class="px-5 py-3.5"><div class="font-semibold text-sm text-white">${i.name}</div><div class="text-[11px] text-slate-500">${i.email}</div></td>
++        <td class="px-5 py-3.5 text-slate-300 text-sm">${i.subject}</td>
++        <td class="px-5 py-3.5"><span class="status-pill status-${i.status}">${i.status}</span></td>
++        <td class="px-5 py-3.5 text-slate-500 text-xs hidden lg:table-cell">${new Date(i.createdAt).toLocaleDateString()}</td>
++        <td class="px-5 py-3.5"><button onclick="openInquiryModal('${i.id}')" class="text-xs text-blue-400 hover:text-blue-300 font-semibold">${i.status==='replied'?'View':'Reply →'}</button></td>
++      </tr>`).join('');
++  }
++  return inquiriesData;
++}
++
++async function loadProducts(returnData = false) {
++  const res = await api('/api/admin/products');
++  if (!res) return {};
++  const data = await res.json();
++  productsData = data.products || [];
++
++  if (!returnData) {
++    const tbody = document.getElementById('products-tbody');
++    if (tbody) tbody.innerHTML = productsData.map(p => `
++      <tr>
++        <td class="px-5 py-3.5"><div class="font-semibold text-sm text-white">${p.name}</div><div class="text-[11px] text-slate-500">${p.category}</div></td>
++        <td class="px-5 py-3.5 mono text-xs text-slate-400 hidden md:table-cell">${p.sku}</td>
++        <td class="px-5 py-3.5 mono text-sm font-bold text-white">$${p.price}</td>
++        <td class="px-5 py-3.5"><span class="${p.inventory === 0 ? 'text-red-400' : p.inventory < 10 ? 'text-amber-400' : 'text-emerald-400'} font-bold text-sm mono">${p.inventory}</span></td>
++        <td class="px-5 py-3.5 text-slate-400 text-sm hidden lg:table-cell">${p.sales}</td>
++        <td class="px-5 py-3.5"><span class="status-pill status-${p.status}">${p.status.replace('_',' ')}</span></td>
++        <td class="px-5 py-3.5"><button onclick="openProductModal('${p.id}','${p.price}','${p.inventory}','${p.status}')" class="text-xs text-blue-400 hover:text-blue-300 font-semibold">Edit →</button></td>
++      </tr>`).join('');
++  }
++  return data;
++}
++
++async function loadUsers() {
++  const res = await api('/api/admin/users');
++  if (!res) return;
++  const users = await res.json();
++  const me = JSON.parse(localStorage.getItem('admin_user') || '{}');
++  document.getElementById('users-tbody').innerHTML = users.map(u => `
++    <tr>
++      <td class="px-5 py-3.5"><div class="font-semibold text-sm text-white">${u.email}</div>${u.id===me.id ? '<div class="text-[11px] text-blue-400 font-semibold">You</div>' : ''}</td>
++      <td class="px-5 py-3.5"><span class="status-pill ${u.role==='superadmin'?'status-delivered':'status-processing'}">${u.role}</span></td>
++      <td class="px-5 py-3.5 text-slate-500 text-xs hidden lg:table-cell">${new Date(u.createdAt).toLocaleDateString()}</td>
++      <td class="px-5 py-3.5 flex gap-2 justify-end">
++        <button onclick="openUserModal('${u.id}','${u.email}')" class="text-xs text-blue-400 hover:text-blue-300 font-semibold">Edit</button>
++        ${u.id!==me.id ? `<button onclick="deleteUser('${u.id}','${u.email}')" class="text-xs text-red-400 hover:text-red-300 font-semibold">Delete</button>` : ''}
++      </td>
++    </tr>`).join('');
++}
++
++function refreshData() { const active = tabs.find(t => !document.getElementById(`tab-${t}`).classList.contains('hidden')); showTab(active); }
++
++// ── Modal helpers ──────────────────────────────────────────────────────────────
++function openModal(id) { document.getElementById(id).classList.remove('hidden'); }
++function closeModal(id) { document.getElementById(id).classList.add('hidden'); }
++
++function openInquiryModal(id) {
++  const inq = inquiriesData.find(i => i.id === id);
++  if (!inq) return;
++  currentInquiryId = id;
++  document.getElementById('inquiry-modal-title').textContent = inq.subject;
++  document.getElementById('inquiry-modal-body').innerHTML = `
++    <div class="p-3 rounded-xl bg-slate-900 border border-slate-800 mb-3">
++      <div class="text-xs font-bold text-slate-500 mb-1">${inq.name} &lt;${inq.email}&gt;</div>
++      <p class="text-sm text-slate-300">${inq.message}</p>
++    </div>
++    ${inq.reply ? `<div class="p-3 rounded-xl bg-blue-950/20 border border-blue-800/30"><div class="text-xs font-bold text-blue-500 mb-1">Your Previous Reply</div><p class="text-sm text-slate-300">${inq.reply}</p></div>` : ''}`;
++  document.getElementById('inquiry-reply').value = inq.reply || '';
++  openModal('inquiry-modal');
++}
++
++async function submitReply() {
++  const reply = document.getElementById('inquiry-reply').value.trim();
++  if (!reply) return;
++  const res = await api(`/api/admin/inquiries/${currentInquiryId}`, { method: 'PUT', body: JSON.stringify({ status: 'replied', reply }) });
++  if (res?.ok) { closeModal('inquiry-modal'); loadInquiries(); }
++}
++
++function openOrderModal(id, number, status) {
++  currentOrderId = id;
++  document.getElementById('order-modal-info').textContent = `Order: ${number}`;
++  document.getElementById('order-status-select').value = status;
++  openModal('order-modal');
++}
++
++async function submitOrderStatus() {
++  const status = document.getElementById('order-status-select').value;
++  const res = await api(`/api/admin/orders/${currentOrderId}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
++  if (res?.ok) { closeModal('order-modal'); loadOrders(); }
++}
++
++function openProductModal(id, price, inventory, status) {
++  document.getElementById('product-edit-id').value = id;
++  document.getElementById('product-edit-price').value = price;
++  document.getElementById('product-edit-inventory').value = inventory;
++  document.getElementById('product-edit-status').value = status;
++  openModal('product-modal');
++}
++
++async function submitProductEdit() {
++  const id = document.getElementById('product-edit-id').value;
++  const updates = {
++    price: document.getElementById('product-edit-price').value,
++    inventory: parseInt(document.getElementById('product-edit-inventory').value),
++    status: document.getElementById('product-edit-status').value,
++  };
++  const res = await api(`/api/admin/products/${id}`, { method: 'PUT', body: JSON.stringify(updates) });
++  if (res?.ok) { closeModal('product-modal'); loadProducts(); }
++}
++
++function openUserModal(id, email) {
++  document.getElementById('user-edit-id').value = id || '';
++  document.getElementById('user-edit-email').value = email || '';
++  document.getElementById('user-edit-password').value = '';
++  document.getElementById('user-modal-title').textContent = id ? 'Edit Admin User' : 'Add Admin User';
++  document.getElementById('user-pw-hint').textContent = id ? '(leave blank to keep unchanged)' : '(required)';
++  document.getElementById('user-modal-error').classList.add('hidden');
++  openModal('user-modal');
++}
++
++async function submitUserForm() {
++  const id = document.getElementById('user-edit-id').value;
++  const email = document.getElementById('user-edit-email').value.trim();
++  const password = document.getElementById('user-edit-password').value;
++  const errEl = document.getElementById('user-modal-error');
++  errEl.classList.add('hidden');
++
++  if (!email) { errEl.textContent = 'Email is required'; errEl.classList.remove('hidden'); return; }
++  if (!id && !password) { errEl.textContent = 'Password is required for new users'; errEl.classList.remove('hidden'); return; }
++
++  const body = { email };
++  if (password) body.password = password;
++
++  const res = await api(id ? `/api/admin/users/${id}` : '/api/admin/users', { method: id ? 'PUT' : 'POST', body: JSON.stringify(body) });
++  const data = await res.json();
++  if (!res.ok) { errEl.textContent = data.error || 'Failed to save'; errEl.classList.remove('hidden'); return; }
++  closeModal('user-modal');
++  loadUsers();
++}
++
++async function deleteUser(id, email) {
++  if (!confirm(`Delete admin user "${email}"? This cannot be undone.`)) return;
++  const res = await api(`/api/admin/users/${id}`, { method: 'DELETE' });
++  if (res?.ok) loadUsers();
++}
++
++// ── Search filter ────────────────────────────────────────────────────────────
++function filterTable(tbodyId, query) {
++  const q = query.toLowerCase();
++  document.getElementById(tbodyId).querySelectorAll('tr').forEach(tr => {
++    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
++  });
++}
++
++// ── Sidebar mobile ────────────────────────────────────────────────────────────
++function toggleSidebar() {
++  document.getElementById('sidebar').classList.toggle('open');
++  document.getElementById('overlay').classList.toggle('hidden');
++}
++function closeSidebar() {
++  document.getElementById('sidebar').classList.remove('open');
++  document.getElementById('overlay').classList.add('hidden');
++}
++
++// ── Init ──────────────────────────────────────────────────────────────────────
++(function init() {
++  const user = JSON.parse(localStorage.getItem('admin_user') || '{}');
++  document.getElementById('user-display').textContent = user.email || 'Admin';
++  showTab('overview');
++})();
++</script>
++</body>
++</html>
+diff --git a/sites/queenscustoms/admin/setup-wizard.html b/sites/queenscustoms/admin/setup-wizard.html
+new file mode 100644
+index 0000000..722182d
+--- /dev/null
++++ b/sites/queenscustoms/admin/setup-wizard.html
+@@ -0,0 +1,791 @@
++<!DOCTYPE html>
++<html lang="en">
++<head>
++  <meta charset="UTF-8" />
++  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++  <title>Queens Customs — Setup Wizard</title>
++  <script src="https://cdn.tailwindcss.com"></script>
++  <script>
++    tailwind.config = {
++      theme: {
++        extend: {
++          colors: {
++            brand: { navy: '#0C0A15', dark: '#04030A', accent: '#3B82F6', purple: '#6366F1', surface: '#14122C' }
++          }
++        }
++      }
++    }
++  </script>
++  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
++  <style>
++    body { font-family: 'Plus Jakarta Sans', sans-serif; background-color: #04030A; }
++    .mono { font-family: 'JetBrains Mono', monospace; }
++    .glass { background: rgba(12,10,21,0.85); backdrop-filter: blur(20px); border: 1px solid rgba(59,130,246,0.12); }
++    .card { background: #0C0A15; border: 1px solid rgba(255,255,255,0.06); }
++    .step-card { border: 2px solid transparent; transition: all 0.2s; }
++    .step-card.current { border-color: rgba(99,102,241,0.5); background: rgba(99,102,241,0.05); }
++    .step-card.completed { border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.04); }
++    .input-field { background: rgba(4,3,10,0.8); border: 1px solid rgba(59,130,246,0.15); transition: all 0.2s; }
++    .input-field:focus { outline: none; border-color: #3B82F6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
++    .step-dot { width: 2rem; height: 2rem; border-radius: 9999px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; flex-shrink: 0; transition: all 0.3s; }
++    .step-dot.pending   { background: #1e1b4b; border: 2px solid #312e81; color: #818cf8; }
++    .step-dot.current   { background: linear-gradient(135deg,#3b82f6,#6366f1); border: 2px solid #6366f1; color: white; box-shadow: 0 0 12px rgba(99,102,241,0.5); }
++    .step-dot.completed { background: linear-gradient(135deg,#059669,#0d9488); border: 2px solid #0d9488; color: white; }
++    .connector { flex: 1; height: 2px; background: #1e1b4b; transition: background 0.3s; }
++    .connector.done { background: linear-gradient(90deg,#059669,#0d9488); }
++    .ai-assistant { background: linear-gradient(135deg, rgba(99,102,241,0.1), rgba(59,130,246,0.1)); border: 1px solid rgba(99,102,241,0.25); }
++    ::-webkit-scrollbar { width: 5px; }
++    ::-webkit-scrollbar-track { background: #0C0A15; }
++    ::-webkit-scrollbar-thumb { background: #2E294E; border-radius: 4px; }
++    .pulse-ring { animation: pulse-ring 2s ease-in-out infinite; }
++    @keyframes pulse-ring { 0%,100%{box-shadow:0 0 0 0 rgba(99,102,241,0.4)} 50%{box-shadow:0 0 0 8px rgba(99,102,241,0)} }
++    .sidebar-link { transition: all 0.15s; border-radius: 0.75rem; }
++    .sidebar-link:hover { background: rgba(59,130,246,0.1); color: #93c5fd; }
++    .sidebar-link.active { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
++    .btn-step { transition: all 0.2s; }
++    .btn-step:hover { transform: translateY(-1px); }
++    .btn-step:active { transform: translateY(0); }
++    @media (max-width: 1024px) { #sidebar { transform: translateX(-100%); transition: transform 0.3s; } #sidebar.open { transform: translateX(0); } }
++  </style>
++</head>
++<body class="text-gray-100 min-h-screen flex">
++
++  <!-- SIDEBAR -->
++  <aside id="sidebar" class="fixed inset-y-0 left-0 w-64 z-40 flex flex-col glass border-r border-slate-800/50 py-6 px-4">
++    <div class="flex items-center gap-3 mb-8 px-2">
++      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center flex-shrink-0">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
++      </div>
++      <div>
++        <div class="text-sm font-bold text-white">Queens Customs</div>
++        <div class="text-[10px] text-purple-400 font-semibold uppercase tracking-wider">Setup Wizard</div>
++      </div>
++    </div>
++
++    <nav class="flex-1 space-y-1">
++      <div class="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-3 mb-2">Wizard Steps</div>
++      <button onclick="goToStep(0)" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400" id="snav-0">
++        <span class="step-dot pending text-[10px]" id="sdot-0">1</span>Welcome
++      </button>
++      <button onclick="goToStep(1)" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400" id="snav-1">
++        <span class="step-dot pending text-[10px]" id="sdot-1">2</span>E-Commerce
++      </button>
++      <button onclick="goToStep(2)" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400" id="snav-2">
++        <span class="step-dot pending text-[10px]" id="sdot-2">3</span>Payments
++      </button>
++      <button onclick="goToStep(3)" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400" id="snav-3">
++        <span class="step-dot pending text-[10px]" id="sdot-3">4</span>Marketing
++      </button>
++      <button onclick="goToStep(4)" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400" id="snav-4">
++        <span class="step-dot pending text-[10px]" id="sdot-4">5</span>Products
++      </button>
++      <button onclick="goToStep(5)" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400" id="snav-5">
++        <span class="step-dot pending text-[10px]" id="sdot-5">6</span>Admin Users
++      </button>
++      <button onclick="goToStep(6)" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400" id="snav-6">
++        <span class="step-dot pending text-[10px]" id="sdot-6">7</span>Complete
++      </button>
++
++      <div class="text-[10px] font-bold text-slate-600 uppercase tracking-widest px-3 mb-2 mt-5">Navigation</div>
++      <a href="/admin/operations" class="sidebar-link flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-slate-400">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
++        Operations
++      </a>
++    </nav>
++
++    <div class="mt-auto border-t border-slate-800/50 pt-4">
++      <button onclick="logout()" class="sidebar-link w-full flex items-center gap-2.5 px-3 py-2.5 text-sm font-semibold text-red-400 hover:bg-red-950/20 hover:text-red-300">
++        <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
++        Sign Out
++      </button>
++    </div>
++  </aside>
++
++  <!-- MOBILE OVERLAY -->
++  <div id="overlay" class="hidden fixed inset-0 bg-black/60 z-30 lg:hidden" onclick="closeSidebar()"></div>
++
++  <!-- MAIN -->
++  <main class="flex-1 lg:ml-64 min-h-screen flex flex-col">
++
++    <!-- TOPBAR -->
++    <header class="sticky top-0 z-20 flex items-center justify-between px-6 py-4 border-b border-slate-800/50 bg-brand-dark/80 backdrop-blur-md">
++      <div class="flex items-center gap-3">
++        <button class="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400" onclick="toggleSidebar()">
++          <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
++        </button>
++        <div>
++          <h1 class="text-lg font-bold text-white">Integration & Setup Wizard</h1>
++          <p class="text-xs text-slate-500">Step-by-step channel & configuration setup</p>
++        </div>
++      </div>
++      <!-- Progress bar -->
++      <div class="hidden sm:flex items-center gap-3">
++        <div class="text-xs text-slate-500 font-medium">Progress</div>
++        <div class="w-32 h-2 bg-slate-800 rounded-full overflow-hidden">
++          <div id="progress-bar" class="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full transition-all duration-500" style="width:14%"></div>
++        </div>
++        <div id="progress-text" class="text-xs text-slate-400 font-semibold mono">1/7</div>
++      </div>
++    </header>
++
++    <!-- STEP CONTENT -->
++    <div class="flex-1 flex flex-col lg:flex-row gap-6 p-6">
++
++      <!-- Main wizard area -->
++      <div class="flex-1 min-w-0">
++
++        <!-- Step indicator pills (desktop) -->
++        <div class="hidden lg:flex items-center gap-1 mb-6">
++          <div class="step-dot current pulse-ring" id="dot-0">1</div>
++          <div class="connector" id="conn-0"></div>
++          <div class="step-dot pending" id="dot-1">2</div>
++          <div class="connector" id="conn-1"></div>
++          <div class="step-dot pending" id="dot-2">3</div>
++          <div class="connector" id="conn-2"></div>
++          <div class="step-dot pending" id="dot-3">4</div>
++          <div class="connector" id="conn-3"></div>
++          <div class="step-dot pending" id="dot-4">5</div>
++          <div class="connector" id="conn-4"></div>
++          <div class="step-dot pending" id="dot-5">6</div>
++          <div class="connector" id="conn-5"></div>
++          <div class="step-dot pending" id="dot-6">7</div>
++        </div>
++
++        <!-- Step panels -->
++        <div id="step-panels">
++
++          <!-- STEP 0: Welcome -->
++          <div id="step-0" class="step-panel card rounded-2xl p-8">
++            <div class="flex items-center gap-3 mb-6">
++              <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 flex items-center justify-center shadow-lg">
++                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
++              </div>
++              <div>
++                <h2 class="text-xl font-bold text-white">Welcome to the Setup Wizard</h2>
++                <p class="text-slate-400 text-sm">Configure your Queens Customs shop in 7 easy steps</p>
++              </div>
++            </div>
++            <div class="grid md:grid-cols-2 gap-4 mb-8">
++              <div class="p-4 rounded-xl bg-blue-950/20 border border-blue-800/30">
++                <div class="text-blue-400 font-bold text-sm mb-1">🛒 E-Commerce Channels</div>
++                <div class="text-slate-400 text-xs">Connect Etsy, Amazon & TikTok Shop to sync your inventory and orders.</div>
++              </div>
++              <div class="p-4 rounded-xl bg-purple-950/20 border border-purple-800/30">
++                <div class="text-purple-400 font-bold text-sm mb-1">💳 Payment Gateways</div>
++                <div class="text-slate-400 text-xs">Set up Stripe and PayPal to accept payments securely.</div>
++              </div>
++              <div class="p-4 rounded-xl bg-amber-950/20 border border-amber-800/30">
++                <div class="text-amber-400 font-bold text-sm mb-1">📧 Email Marketing</div>
++                <div class="text-slate-400 text-xs">Connect your email marketing platform to engage customers.</div>
++              </div>
++              <div class="p-4 rounded-xl bg-emerald-950/20 border border-emerald-800/30">
++                <div class="text-emerald-400 font-bold text-sm mb-1">📦 Product Management</div>
++                <div class="text-slate-400 text-xs">Update inventory, pricing and images for your products.</div>
++              </div>
++            </div>
++            <p class="text-slate-500 text-sm mb-6">All API keys are stored securely on your server and are never exposed to the browser. You can update them at any time.</p>
++            <div class="flex justify-end">
++              <button onclick="nextStep()" class="btn-step px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm flex items-center gap-2 shadow-lg shadow-blue-900/30">
++                Start Setup
++                <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
++              </button>
++            </div>
++          </div>
++
++          <!-- STEP 1: E-Commerce -->
++          <div id="step-1" class="step-panel hidden card rounded-2xl p-8">
++            <div class="flex items-center gap-3 mb-6">
++              <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-orange-500 to-amber-500 flex items-center justify-center shadow-lg">
++                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
++              </div>
++              <div>
++                <h2 class="text-xl font-bold text-white">E-Commerce Channel Integrations</h2>
++                <p class="text-slate-400 text-sm">Connect your selling channels to manage orders from one place</p>
++              </div>
++            </div>
++
++            <!-- Etsy -->
++            <div class="mb-5 p-5 rounded-xl border border-slate-800 bg-slate-900/40">
++              <div class="flex items-center justify-between mb-3">
++                <div class="flex items-center gap-2">
++                  <div class="w-8 h-8 rounded-lg bg-orange-500/20 flex items-center justify-center text-lg">🧶</div>
++                  <div class="font-bold text-white text-sm">Etsy</div>
++                </div>
++                <a href="https://www.etsy.com/developers/register" target="_blank" rel="noopener" class="text-xs text-blue-400 hover:text-blue-300 font-semibold">Get API Key →</a>
++              </div>
++              <div class="grid md:grid-cols-2 gap-3">
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">API Key</label>
++                  <input type="text" id="etsy-apiKey" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="etsyv3-keystring-xxxx" />
++                </div>
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Shop ID</label>
++                  <input type="text" id="etsy-shopId" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="12345678" />
++                </div>
++              </div>
++            </div>
++
++            <!-- Amazon -->
++            <div class="mb-5 p-5 rounded-xl border border-slate-800 bg-slate-900/40">
++              <div class="flex items-center justify-between mb-3">
++                <div class="flex items-center gap-2">
++                  <div class="w-8 h-8 rounded-lg bg-yellow-500/20 flex items-center justify-center text-lg">🛒</div>
++                  <div class="font-bold text-white text-sm">Amazon Seller Central</div>
++                </div>
++                <a href="https://sellercentral.amazon.com/sw/AccountInfo/MerchantToken/step/MerchantToken" target="_blank" rel="noopener" class="text-xs text-blue-400 hover:text-blue-300 font-semibold">Get Keys →</a>
++              </div>
++              <div class="grid md:grid-cols-2 gap-3">
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Seller ID</label>
++                  <input type="text" id="amazon-sellerId" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="AXXXXXXXXXXXXXX" />
++                </div>
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">MWS Auth Token</label>
++                  <input type="password" id="amazon-mwsToken" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="amzn.mws.xxxxx" />
++                </div>
++              </div>
++            </div>
++
++            <!-- TikTok Shop -->
++            <div class="mb-6 p-5 rounded-xl border border-slate-800 bg-slate-900/40">
++              <div class="flex items-center justify-between mb-3">
++                <div class="flex items-center gap-2">
++                  <div class="w-8 h-8 rounded-lg bg-pink-500/20 flex items-center justify-center text-lg">🎵</div>
++                  <div class="font-bold text-white text-sm">TikTok Shop</div>
++                </div>
++                <a href="https://partner.tiktokshop.com" target="_blank" rel="noopener" class="text-xs text-blue-400 hover:text-blue-300 font-semibold">TikTok Partner →</a>
++              </div>
++              <div class="grid md:grid-cols-2 gap-3">
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">App Key</label>
++                  <input type="text" id="tiktokShop-appKey" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="xxxxxxxxxxxx" />
++                </div>
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">App Secret</label>
++                  <input type="password" id="tiktokShop-appSecret" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="••••••••" />
++                </div>
++              </div>
++            </div>
++
++            <div id="ecom-feedback" class="hidden mb-4 p-3 rounded-xl text-sm font-medium"></div>
++            <div class="flex justify-between">
++              <button onclick="prevStep()" class="btn-step px-5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 font-semibold text-sm">← Back</button>
++              <button onclick="saveAndNext('ecommerce')" class="btn-step px-6 py-3 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold text-sm flex items-center gap-2">
++                Save & Continue →
++              </button>
++            </div>
++          </div>
++
++          <!-- STEP 2: Payments -->
++          <div id="step-2" class="step-panel hidden card rounded-2xl p-8">
++            <div class="flex items-center gap-3 mb-6">
++              <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-emerald-500 to-teal-600 flex items-center justify-center shadow-lg">
++                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
++              </div>
++              <div>
++                <h2 class="text-xl font-bold text-white">Payment Gateway Setup</h2>
++                <p class="text-slate-400 text-sm">Connect Stripe and PayPal to process customer payments</p>
++              </div>
++            </div>
++
++            <!-- Stripe -->
++            <div class="mb-5 p-5 rounded-xl border border-slate-800 bg-slate-900/40">
++              <div class="flex items-center justify-between mb-4">
++                <div class="flex items-center gap-2">
++                  <div class="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center font-bold text-indigo-400 text-sm">S</div>
++                  <div>
++                    <div class="font-bold text-white text-sm">Stripe</div>
++                    <div class="text-[11px] text-slate-500">Recommended — fastest setup</div>
++                  </div>
++                </div>
++                <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener" class="text-xs text-blue-400 hover:text-blue-300 font-semibold">Stripe Dashboard →</a>
++              </div>
++              <div class="space-y-3">
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Publishable Key (pk_live_…)</label>
++                  <input type="text" id="stripe-publishableKey" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="pk_live_xxxxxxxxxxxxxxxxxx" />
++                </div>
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Secret Key (sk_live_…)</label>
++                  <input type="password" id="stripe-secretKey" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="sk_live_xxxxxxxxxxxxxxxxxx" />
++                </div>
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Webhook Secret (whsec_…)</label>
++                  <input type="password" id="stripe-webhookSecret" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="whsec_xxxxxxxxxxxxxxxxxx" />
++                </div>
++              </div>
++            </div>
++
++            <!-- PayPal -->
++            <div class="mb-6 p-5 rounded-xl border border-slate-800 bg-slate-900/40">
++              <div class="flex items-center justify-between mb-4">
++                <div class="flex items-center gap-2">
++                  <div class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center font-bold text-blue-400 text-sm">PP</div>
++                  <div class="font-bold text-white text-sm">PayPal</div>
++                </div>
++                <a href="https://developer.paypal.com/api/rest" target="_blank" rel="noopener" class="text-xs text-blue-400 hover:text-blue-300 font-semibold">PayPal Developer →</a>
++              </div>
++              <div class="grid md:grid-cols-2 gap-3">
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Client ID</label>
++                  <input type="text" id="paypal-clientId" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="Axxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
++                </div>
++                <div>
++                  <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Client Secret</label>
++                  <input type="password" id="paypal-clientSecret" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="Exxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" />
++                </div>
++              </div>
++            </div>
++
++            <div id="payment-feedback" class="hidden mb-4 p-3 rounded-xl text-sm font-medium"></div>
++            <div class="flex justify-between">
++              <button onclick="prevStep()" class="btn-step px-5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 font-semibold text-sm">← Back</button>
++              <button onclick="saveAndNext('payments')" class="btn-step px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white font-bold text-sm flex items-center gap-2">
++                Save & Continue →
++              </button>
++            </div>
++          </div>
++
++          <!-- STEP 3: Email Marketing -->
++          <div id="step-3" class="step-panel hidden card rounded-2xl p-8">
++            <div class="flex items-center gap-3 mb-6">
++              <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-500 flex items-center justify-center shadow-lg">
++                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
++              </div>
++              <div>
++                <h2 class="text-xl font-bold text-white">Email Marketing</h2>
++                <p class="text-slate-400 text-sm">Connect your email platform for newsletters & automations</p>
++              </div>
++            </div>
++
++            <div class="mb-4">
++              <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-2">Email Provider</label>
++              <div class="grid grid-cols-3 gap-3 mb-4">
++                <label class="relative cursor-pointer">
++                  <input type="radio" name="emailProvider" value="mailchimp" class="sr-only peer" checked />
++                  <div class="p-3 rounded-xl border border-slate-800 text-center peer-checked:border-blue-500/50 peer-checked:bg-blue-950/20 transition-all">
++                    <div class="text-lg mb-1">🐒</div>
++                    <div class="text-xs font-semibold text-slate-300">Mailchimp</div>
++                  </div>
++                </label>
++                <label class="relative cursor-pointer">
++                  <input type="radio" name="emailProvider" value="klaviyo" class="sr-only peer" />
++                  <div class="p-3 rounded-xl border border-slate-800 text-center peer-checked:border-blue-500/50 peer-checked:bg-blue-950/20 transition-all">
++                    <div class="text-lg mb-1">📊</div>
++                    <div class="text-xs font-semibold text-slate-300">Klaviyo</div>
++                  </div>
++                </label>
++                <label class="relative cursor-pointer">
++                  <input type="radio" name="emailProvider" value="sendgrid" class="sr-only peer" />
++                  <div class="p-3 rounded-xl border border-slate-800 text-center peer-checked:border-blue-500/50 peer-checked:bg-blue-950/20 transition-all">
++                    <div class="text-lg mb-1">📨</div>
++                    <div class="text-xs font-semibold text-slate-300">SendGrid</div>
++                  </div>
++                </label>
++              </div>
++            </div>
++
++            <div class="p-5 rounded-xl border border-slate-800 bg-slate-900/40 space-y-3">
++              <div>
++                <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">API Key</label>
++                <input type="password" id="email-apiKey" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="Your email platform API key" />
++              </div>
++              <div>
++                <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">List / Audience ID</label>
++                <input type="text" id="email-listId" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm font-mono placeholder-slate-700" placeholder="abc123def456" />
++              </div>
++            </div>
++
++            <div id="email-feedback" class="hidden mt-4 mb-4 p-3 rounded-xl text-sm font-medium"></div>
++            <div class="flex justify-between mt-6">
++              <button onclick="prevStep()" class="btn-step px-5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 font-semibold text-sm">← Back</button>
++              <button onclick="saveAndNext('email')" class="btn-step px-6 py-3 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold text-sm flex items-center gap-2">
++                Save & Continue →
++              </button>
++            </div>
++          </div>
++
++          <!-- STEP 4: Products -->
++          <div id="step-4" class="step-panel hidden card rounded-2xl p-8">
++            <div class="flex items-center gap-3 mb-6">
++              <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-violet-600 to-purple-600 flex items-center justify-center shadow-lg">
++                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
++              </div>
++              <div>
++                <h2 class="text-xl font-bold text-white">Product & Inventory Setup</h2>
++                <p class="text-slate-400 text-sm">Update pricing, stock levels, and product images</p>
++              </div>
++            </div>
++
++            <div id="wizard-products-list" class="space-y-3 mb-6">
++              <div class="flex items-center justify-center py-8 text-slate-600">
++                <svg class="animate-spin w-6 h-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
++              </div>
++            </div>
++
++            <div class="flex justify-between">
++              <button onclick="prevStep()" class="btn-step px-5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 font-semibold text-sm">← Back</button>
++              <button onclick="nextStep()" class="btn-step px-6 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 text-white font-bold text-sm flex items-center gap-2">
++                Continue →
++              </button>
++            </div>
++          </div>
++
++          <!-- STEP 5: Admin Users -->
++          <div id="step-5" class="step-panel hidden card rounded-2xl p-8">
++            <div class="flex items-center gap-3 mb-6">
++              <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-600 to-blue-600 flex items-center justify-center shadow-lg">
++                <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
++              </div>
++              <div>
++                <h2 class="text-xl font-bold text-white">Admin User Management</h2>
++                <p class="text-slate-400 text-sm">Add team members who need portal access</p>
++              </div>
++            </div>
++
++            <div id="wizard-users-list" class="space-y-2 mb-4"></div>
++
++            <!-- Quick add form -->
++            <div class="p-5 rounded-xl border border-slate-800 bg-slate-900/40">
++              <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Add New Admin</div>
++              <div class="grid md:grid-cols-2 gap-3 mb-3">
++                <input type="email" id="wizard-user-email" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm placeholder-slate-700" placeholder="email@queenscustoms.shop" />
++                <input type="password" id="wizard-user-password" class="input-field w-full px-3 py-2.5 rounded-xl text-white text-sm placeholder-slate-700" placeholder="Password (min 8 chars)" />
++              </div>
++              <div id="wizard-user-error" class="hidden mb-2 text-red-400 text-xs font-medium"></div>
++              <button onclick="addWizardUser()" class="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-sm font-bold transition-all">Add Admin User</button>
++            </div>
++
++            <div class="flex justify-between mt-6">
++              <button onclick="prevStep()" class="btn-step px-5 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-slate-300 font-semibold text-sm">← Back</button>
++              <button onclick="nextStep()" class="btn-step px-6 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold text-sm flex items-center gap-2">
++                Continue →
++              </button>
++            </div>
++          </div>
++
++          <!-- STEP 6: Complete -->
++          <div id="step-6" class="step-panel hidden card rounded-2xl p-8 text-center">
++            <div class="w-20 h-20 rounded-full bg-gradient-to-tr from-emerald-500 to-teal-500 flex items-center justify-center mx-auto mb-6 shadow-2xl shadow-emerald-900/40">
++              <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
++            </div>
++            <h2 class="text-2xl font-bold text-white mb-3">Setup Complete! 🎉</h2>
++            <p class="text-slate-400 mb-8 max-w-md mx-auto">Your Queens Customs admin portals are configured and ready. You can return to this wizard at any time to update your integrations.</p>
++            <div class="grid md:grid-cols-2 gap-4 mb-8">
++              <a href="/admin/operations" class="p-5 rounded-xl border border-emerald-800/40 bg-emerald-950/20 hover:bg-emerald-950/30 transition-all group">
++                <div class="text-2xl mb-2">📊</div>
++                <div class="font-bold text-white text-sm group-hover:text-emerald-400 transition-colors">Operations Dashboard</div>
++                <div class="text-xs text-slate-500 mt-1">Manage orders, inquiries & products</div>
++              </a>
++              <a href="/admin/setup-wizard" onclick="goToStep(1)" class="p-5 rounded-xl border border-blue-800/40 bg-blue-950/20 hover:bg-blue-950/30 transition-all group">
++                <div class="text-2xl mb-2">⚙️</div>
++                <div class="font-bold text-white text-sm group-hover:text-blue-400 transition-colors">Update Integrations</div>
++                <div class="text-xs text-slate-500 mt-1">Return to setup to change API keys</div>
++              </a>
++            </div>
++          </div>
++
++        </div><!-- /step-panels -->
++      </div><!-- /main wizard area -->
++
++      <!-- AI ASSISTANT PANEL -->
++      <div class="w-full lg:w-80 flex-shrink-0">
++        <div class="ai-assistant rounded-2xl p-5 sticky top-24">
++          <div class="flex items-center gap-2 mb-4">
++            <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-purple-600 to-indigo-600 flex items-center justify-center pulse-ring">
++              <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
++            </div>
++            <div>
++              <div class="font-bold text-white text-sm">AI Setup Assistant</div>
++              <div class="text-[11px] text-purple-400 font-semibold">Step Guide · Active</div>
++            </div>
++          </div>
++
++          <div id="ai-tip" class="text-sm text-slate-300 leading-relaxed mb-4"></div>
++
++          <div class="space-y-2" id="ai-actions">
++            <!-- dynamic action buttons -->
++          </div>
++
++          <div class="mt-4 pt-4 border-t border-slate-800/50">
++            <div class="text-[10px] font-bold text-slate-600 uppercase tracking-wider mb-2">Quick Links</div>
++            <div class="space-y-1.5">
++              <a href="https://www.etsy.com/developers" target="_blank" rel="noopener" class="flex items-center gap-2 text-xs text-slate-500 hover:text-slate-300 transition-colors">
++                <span class="w-4 h-4 rounded bg-orange-500/20 flex items-center justify-center text-[10px]">E</span>
++                Etsy Developer Portal
++              </a>
++              <a href="https://dashboard.stripe.com" target="_blank" rel="noopener" class="flex items-center gap-2 text-xs text-slate-500 hover:text-slate-300 transition-colors">
++                <span class="w-4 h-4 rounded bg-indigo-500/20 flex items-center justify-center text-[10px] font-bold text-indigo-400">S</span>
++                Stripe Dashboard
++              </a>
++              <a href="https://seller.amazon.com" target="_blank" rel="noopener" class="flex items-center gap-2 text-xs text-slate-500 hover:text-slate-300 transition-colors">
++                <span class="w-4 h-4 rounded bg-yellow-500/20 flex items-center justify-center text-[10px]">A</span>
++                Amazon Seller Central
++              </a>
++              <a href="https://partner.tiktokshop.com" target="_blank" rel="noopener" class="flex items-center gap-2 text-xs text-slate-500 hover:text-slate-300 transition-colors">
++                <span class="w-4 h-4 rounded bg-pink-500/20 flex items-center justify-center text-[10px]">T</span>
++                TikTok Shop Partner
++              </a>
++            </div>
++          </div>
++        </div>
++      </div>
++
++    </div><!-- /flex -->
++  </main>
++
++<script>
++const API = '';
++let TOKEN = sessionStorage.getItem('admin_token') || localStorage.getItem('admin_token');
++if (!TOKEN) window.location.href = '/admin/login';
++
++let currentStep = 0;
++const TOTAL_STEPS = 7;
++let integrationSettings = {};
++
++const AI_TIPS = [
++  {
++    tip: "Welcome! This wizard will guide you through connecting your sales channels, payment providers, and more. Each step saves automatically — you can return anytime.",
++    actions: [{ label: '→ Start with E-Commerce', fn: 'nextStep()' }]
++  },
++  {
++    tip: "Connect your Etsy, Amazon, and TikTok Shop accounts. You'll need API keys from each platform's developer portal. Click the 'Get API Key' links next to each channel.",
++    actions: [{ label: '🔗 Etsy Developers', url: 'https://www.etsy.com/developers' }, { label: '🛒 Amazon Seller Central', url: 'https://sellercentral.amazon.com' }]
++  },
++  {
++    tip: "Stripe is recommended for most sellers — it supports cards, Apple Pay, and Google Pay. Use your Stripe Dashboard to find your API keys under Developers → API Keys.",
++    actions: [{ label: '💳 Open Stripe Dashboard', url: 'https://dashboard.stripe.com/apikeys' }]
++  },
++  {
++    tip: "Klaviyo is great for e-commerce businesses — it integrates directly with Shopify/WooCommerce. Mailchimp is simpler if you're just starting with email marketing.",
++    actions: [{ label: '📧 Compare Platforms', url: 'https://klaviyo.com' }]
++  },
++  {
++    tip: "Review and update your product inventory, pricing, and status here. Items showing 0 in stock will be marked out of stock automatically.",
++    actions: []
++  },
++  {
++    tip: "Add team members who need access to the admin portals. Each admin can independently manage orders, inquiries, and products.",
++    actions: []
++  },
++  {
++    tip: "All done! Your setup is saved. Remember to update your API keys when they rotate, and check the Operations dashboard regularly for new orders and inquiries.",
++    actions: [{ label: '📊 Go to Operations', url: '/admin/operations' }]
++  }
++];
++
++async function api(path, opts = {}) {
++  const res = await fetch(API + path, {
++    ...opts,
++    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${TOKEN}`, ...(opts.headers || {}) },
++  });
++  if (res.status === 401) { logout(); return null; }
++  return res;
++}
++
++function logout() {
++  sessionStorage.removeItem('admin_token'); localStorage.removeItem('admin_token');
++  window.location.href = '/admin/login';
++}
++
++// ── Step navigation ────────────────────────────────────────────────────────────
++function goToStep(n) {
++  if (n < 0 || n >= TOTAL_STEPS) return;
++  document.querySelectorAll('.step-panel').forEach((el, i) => el.classList.toggle('hidden', i !== n));
++  updateStepUI(n);
++  currentStep = n;
++  if (n === 4) loadWizardProducts();
++  if (n === 5) loadWizardUsers();
++  closeSidebar();
++}
++
++function nextStep() { goToStep(currentStep + 1); }
++function prevStep() { goToStep(currentStep - 1); }
++
++function updateStepUI(n) {
++  const bar = document.getElementById('progress-bar');
++  const txt = document.getElementById('progress-text');
++  const pct = Math.round(((n + 1) / TOTAL_STEPS) * 100);
++  if (bar) bar.style.width = pct + '%';
++  if (txt) txt.textContent = `${n + 1}/${TOTAL_STEPS}`;
++
++  for (let i = 0; i < TOTAL_STEPS; i++) {
++    const dot = document.getElementById(`dot-${i}`);
++    const sdot = document.getElementById(`sdot-${i}`);
++    const snav = document.getElementById(`snav-${i}`);
++    const conn = document.getElementById(`conn-${i}`);
++    const cls = i < n ? 'completed' : i === n ? 'current' : 'pending';
++
++    if (dot) { dot.className = `step-dot ${cls}`; if (cls==='current') dot.classList.add('pulse-ring'); if (cls==='completed') dot.innerHTML='✓'; }
++    if (sdot) { sdot.className = `step-dot ${cls} text-[10px]`; if (cls==='completed') sdot.innerHTML='✓'; }
++    if (snav) { snav.classList.toggle('active', i===n); snav.classList.toggle('text-slate-400', i!==n); }
++    if (conn) conn.classList.toggle('done', i < n);
++  }
++
++  // AI tip
++  const tip = AI_TIPS[n];
++  const tipEl = document.getElementById('ai-tip');
++  const actEl = document.getElementById('ai-actions');
++  if (tip && tipEl) { tipEl.textContent = tip.tip; }
++  if (tip && actEl) {
++    actEl.innerHTML = tip.actions.map(a => a.url
++      ? `<a href="${a.url}" target="_blank" rel="noopener" class="block w-full text-center px-3 py-2 rounded-xl bg-purple-950/40 border border-purple-800/30 text-purple-300 text-xs font-semibold hover:bg-purple-950/60 transition-all">${a.label}</a>`
++      : `<button onclick="${a.fn}" class="block w-full text-center px-3 py-2 rounded-xl bg-purple-950/40 border border-purple-800/30 text-purple-300 text-xs font-semibold hover:bg-purple-950/60 transition-all">${a.label}</button>`
++    ).join('');
++  }
++}
++
++// ── Integration save ────────────────────────────────────────────────────────────
++async function saveAndNext(section) {
++  let body = {};
++
++  if (section === 'ecommerce') {
++    body = {
++      etsy: { apiKey: v('etsy-apiKey'), shopId: v('etsy-shopId') },
++      amazon: { sellerId: v('amazon-sellerId'), mwsToken: v('amazon-mwsToken') },
++      tiktokShop: { appKey: v('tiktokShop-appKey'), appSecret: v('tiktokShop-appSecret') },
++    };
++  } else if (section === 'payments') {
++    body = {
++      stripe: { publishableKey: v('stripe-publishableKey'), secretKey: v('stripe-secretKey'), webhookSecret: v('stripe-webhookSecret') },
++      paypal: { clientId: v('paypal-clientId'), clientSecret: v('paypal-clientSecret') },
++    };
++  } else if (section === 'email') {
++    const provider = document.querySelector('input[name="emailProvider"]:checked')?.value || 'mailchimp';
++    body = { emailMarketing: { provider, apiKey: v('email-apiKey'), listId: v('email-listId') } };
++  }
++
++  const res = await api('/api/admin/integrations', { method: 'PUT', body: JSON.stringify(body) });
++  if (!res?.ok) {
++    showFeedback(`${section}-feedback`, '❌ Save failed. Please check your connection and try again.', false);
++    return;
++  }
++  showFeedback(`${section}-feedback`, '✅ Settings saved successfully!', true);
++  setTimeout(nextStep, 800);
++}
++
++function v(id) { return document.getElementById(id)?.value?.trim() || ''; }
++
++function showFeedback(id, msg, ok) {
++  const el = document.getElementById(id);
++  if (!el) return;
++  el.textContent = msg;
++  el.className = `mb-4 p-3 rounded-xl text-sm font-medium ${ok ? 'bg-emerald-950/40 border border-emerald-800/40 text-emerald-400' : 'bg-red-950/40 border border-red-800/40 text-red-400'}`;
++  el.classList.remove('hidden');
++}
++
++// ── Wizard Products ─────────────────────────────────────────────────────────────
++async function loadWizardProducts() {
++  const res = await api('/api/admin/products');
++  if (!res) return;
++  const data = await res.json();
++  const el = document.getElementById('wizard-products-list');
++  el.innerHTML = (data.products || []).map(p => `
++    <div class="p-4 rounded-xl border border-slate-800 bg-slate-900/40" id="wprod-${p.id}">
++      <div class="flex items-center justify-between mb-3">
++        <div class="font-semibold text-white text-sm">${p.name} <span class="mono text-[11px] text-slate-500 ml-1">${p.sku}</span></div>
++        <span class="text-[11px] px-2 py-0.5 rounded-full font-bold ${p.inventory === 0 ? 'bg-red-950/50 text-red-400' : 'bg-emerald-950/50 text-emerald-400'}">${p.inventory === 0 ? 'Out of Stock' : `${p.inventory} in stock`}</span>
++      </div>
++      <div class="grid grid-cols-3 gap-2">
++        <div>
++          <label class="text-[10px] font-bold text-slate-600 uppercase mb-1 block">Price ($)</label>
++          <input type="number" step="0.01" value="${p.price}" id="wp-price-${p.id}" class="input-field w-full px-2 py-2 rounded-lg text-white text-sm font-mono" />
++        </div>
++        <div>
++          <label class="text-[10px] font-bold text-slate-600 uppercase mb-1 block">Stock</label>
++          <input type="number" value="${p.inventory}" id="wp-inv-${p.id}" class="input-field w-full px-2 py-2 rounded-lg text-white text-sm font-mono" />
++        </div>
++        <div class="flex items-end">
++          <button onclick="saveWizardProduct('${p.id}')" class="w-full py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all">Save</button>
++        </div>
++      </div>
++    </div>`).join('');
++}
++
++async function saveWizardProduct(id) {
++  const price = document.getElementById(`wp-price-${id}`)?.value;
++  const inventory = parseInt(document.getElementById(`wp-inv-${id}`)?.value);
++  const res = await api(`/api/admin/products/${id}`, { method: 'PUT', body: JSON.stringify({ price, inventory, status: inventory === 0 ? 'out_of_stock' : 'active' }) });
++  if (res?.ok) {
++    const el = document.getElementById(`wprod-${id}`);
++    if (el) { el.style.borderColor = 'rgba(16,185,129,0.4)'; setTimeout(() => el.style.borderColor = '', 1500); }
++  }
++}
++
++// ── Wizard Users ─────────────────────────────────────────────────────────────────
++async function loadWizardUsers() {
++  const res = await api('/api/admin/users');
++  if (!res) return;
++  const users = await res.json();
++  const me = JSON.parse(localStorage.getItem('admin_user') || '{}');
++  document.getElementById('wizard-users-list').innerHTML = users.map(u => `
++    <div class="flex items-center justify-between p-3 rounded-xl border border-slate-800 bg-slate-900/40">
++      <div>
++        <div class="font-semibold text-white text-sm">${u.email}</div>
++        <div class="text-[11px] text-slate-500">${u.role}${u.id===me.id?' · You':''}</div>
++      </div>
++      ${u.id !== me.id ? `<button onclick="deleteWizardUser('${u.id}','${u.email}')" class="text-xs text-red-400 hover:text-red-300 font-semibold px-2">Remove</button>` : ''}
++    </div>`).join('');
++}
++
++async function addWizardUser() {
++  const email = document.getElementById('wizard-user-email').value.trim();
++  const password = document.getElementById('wizard-user-password').value;
++  const errEl = document.getElementById('wizard-user-error');
++  errEl.classList.add('hidden');
++  if (!email || !password) { errEl.textContent = 'Email and password are required'; errEl.classList.remove('hidden'); return; }
++  const res = await api('/api/admin/users', { method: 'POST', body: JSON.stringify({ email, password }) });
++  const data = await res.json();
++  if (!res.ok) { errEl.textContent = data.error || 'Failed'; errEl.classList.remove('hidden'); return; }
++  document.getElementById('wizard-user-email').value = '';
++  document.getElementById('wizard-user-password').value = '';
++  loadWizardUsers();
++}
++
++async function deleteWizardUser(id, email) {
++  if (!confirm(`Remove "${email}"?`)) return;
++  const res = await api(`/api/admin/users/${id}`, { method: 'DELETE' });
++  if (res?.ok) loadWizardUsers();
++}
++
++// ── Populate fields from saved settings ─────────────────────────────────────────
++async function loadSavedSettings() {
++  const res = await api('/api/admin/integrations');
++  if (!res) return;
++  integrationSettings = await res.json();
++  const s = integrationSettings;
++  // E-commerce
++  setVal('etsy-shopId', s.etsy?.shopId);
++  setVal('amazon-sellerId', s.amazon?.sellerId);
++  setVal('tiktokShop-appKey', s.tiktokShop?.appKey);
++  // Payments
++  setVal('stripe-publishableKey', s.stripe?.publishableKey);
++  // Email
++  setVal('email-listId', s.emailMarketing?.listId);
++  if (s.emailMarketing?.provider) {
++    const radio = document.querySelector(`input[name="emailProvider"][value="${s.emailMarketing.provider}"]`);
++    if (radio) radio.checked = true;
++  }
++}
++
++function setVal(id, val) {
++  const el = document.getElementById(id);
++  if (el && val) el.value = val;
++}
++
++// ── Sidebar ────────────────────────────────────────────────────────────────────
++function toggleSidebar() {
++  document.getElementById('sidebar').classList.toggle('open');
++  document.getElementById('overlay').classList.toggle('hidden');
++}
++function closeSidebar() {
++  document.getElementById('sidebar').classList.remove('open');
++  document.getElementById('overlay').classList.add('hidden');
++}
++
++// ── Init ──────────────────────────────────────────────────────────────────────
++goToStep(0);
++loadSavedSettings();
++</script>
++</body>
++</html>
+diff --git a/sites/queenscustoms/qc-integration.js b/sites/queenscustoms/qc-integration.js
+new file mode 100644
+index 0000000..c074904
+--- /dev/null
++++ b/sites/queenscustoms/qc-integration.js
+@@ -0,0 +1,192 @@
++/**
++ * Queens Customs Shop — Admin Backend Integration
++ * ================================================
++ * Drop this script into queenscustoms.shop to wire up:
++ *   1. Contact form → Admin Inquiries inbox
++ *   2. Cart checkout → Admin Orders dashboard
++ *   3. Product catalog → live inventory from admin backend
++ *
++ * SETUP:
++ *   1. Host this file or paste it inline in your site's <script> tag.
++ *   2. Set QC_API_BASE to the URL where your admin server runs.
++ *      Examples:
++ *        - Local dev:  'http://localhost:3000'
++ *        - Production: 'https://your-server-url.com'  (or your Cloudflare tunnel URL)
++ *
++ * USAGE:
++ *   Each integration is opt-in. Only call the functions you need.
++ */
++
++const QC_API_BASE = window.QC_API_BASE || 'http://localhost:3000';
++
++// ─────────────────────────────────────────────────────────────────────────────
++// 1. CONTACT FORM INTEGRATION
++//    Submits the contact/custom-order form to the Admin Inquiries inbox.
++//
++//    Usage — attach to your form's submit event:
++//
++//      document.getElementById('your-contact-form').addEventListener('submit', QC.submitContactForm);
++//
++//    OR call directly:
++//
++//      await QC.submitInquiry({ name, email, subject, message });
++// ─────────────────────────────────────────────────────────────────────────────
++
++const QC = {
++
++  /**
++   * Submit an inquiry directly (called programmatically).
++   * Returns { success: true, id, message } on success.
++   */
++  async submitInquiry({ name, email, subject, message, source = 'website' }) {
++    const res = await fetch(`${QC_API_BASE}/api/inquiries`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ name, email, subject, message, source }),
++    });
++    const data = await res.json();
++    if (!res.ok) throw new Error(data.error || 'Submission failed');
++    return data;
++  },
++
++  /**
++   * Wire to a form's submit event.
++   * Reads: name="#name-field" email="#email-field" subject="#subject-field" message="#message-field"
++   * OR pass field IDs: QC.submitContactForm(event, { nameId, emailId, subjectId, messageId })
++   *
++   * Example HTML:
++   *   <form id="contact-form">
++   *     <input id="contact-name"    name="name"    ... />
++   *     <input id="contact-email"   name="email"   ... />
++   *     <input id="contact-subject" name="subject" ... />
++   *     <textarea id="contact-msg"  name="message" ...></textarea>
++   *     <button type="submit">Send Message 👑</button>
++   *   </form>
++   *
++   *   <script>
++   *     document.getElementById('contact-form').addEventListener('submit', QC.submitContactForm);
++   *   </script>
++   */
++  async submitContactForm(event, ids = {}) {
++    event.preventDefault();
++    const {
++      nameId = 'contact-name',
++      emailId = 'contact-email',
++      subjectId = 'contact-subject',
++      messageId = 'contact-msg',
++      topicId = 'contact-topic',
++    } = ids;
++
++    const name    = document.getElementById(nameId)?.value?.trim();
++    const email   = document.getElementById(emailId)?.value?.trim();
++    const subject = document.getElementById(subjectId)?.value?.trim()
++                 || document.getElementById(topicId)?.value?.trim()
++                 || 'Contact Form Submission';
++    const message = document.getElementById(messageId)?.value?.trim();
++
++    const btn = event.target.querySelector('[type="submit"]');
++    const originalText = btn?.textContent;
++    if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
++
++    try {
++      await QC.submitInquiry({ name, email, subject, message });
++      if (btn) btn.textContent = '✓ Message Sent! The Vibe Queen will reply within 24hrs 👑';
++      event.target.reset();
++    } catch (err) {
++      console.error('[QC] Contact form error:', err.message);
++      if (btn) { btn.disabled = false; btn.textContent = originalText; }
++      alert('Message could not be sent. Please DM on TikTok instead! 👑');
++    }
++  },
++
++  // ─────────────────────────────────────────────────────────────────────────
++  // 2. CART / ORDER INTEGRATION
++  //    Submits a completed cart to the Admin Orders dashboard.
++  //
++  //    Usage:
++  //      const result = await QC.submitOrder({
++  //        customer: { name: 'Brianna Scott', email: 'b@email.com', address: '...' },
++  //        items: [{ name: 'Pink Glitter Queen Tumbler (30oz)', qty: 1, price: '40.00' }],
++  //        total: '40.00',
++  //        channel: 'Website',  // 'Website' | 'TikTok Shop' | 'Etsy' | 'Amazon'
++  //        notes: 'Gift wrap please',
++  //      });
++  //      // result.orderNumber → 'QC-10009'
++  // ─────────────────────────────────────────────────────────────────────────
++
++  async submitOrder({ customer, items, total, channel = 'Website', notes = '' }) {
++    const res = await fetch(`${QC_API_BASE}/api/orders`, {
++      method: 'POST',
++      headers: { 'Content-Type': 'application/json' },
++      body: JSON.stringify({ customer, items, total, channel, notes }),
++    });
++    const data = await res.json();
++    if (!res.ok) throw new Error(data.error || 'Order submission failed');
++    return data; // { success, orderNumber, orderId, message }
++  },
++
++  // ─────────────────────────────────────────────────────────────────────────
++  // 3. LIVE PRODUCT CATALOG
++  //    Fetches the current inventory from the admin backend so your site
++  //    always shows accurate stock levels and "Only X left!" badges.
++  //
++  //    Usage:
++  //      const products = await QC.getProducts();
++  //      // products → [{ id, name, price, inventory, inStock, lowStock, ... }]
++  // ─────────────────────────────────────────────────────────────────────────
++
++  async getProducts() {
++    const res = await fetch(`${QC_API_BASE}/api/products`);
++    if (!res.ok) throw new Error('Failed to load products');
++    return res.json();
++  },
++
++  /**
++   * Update all product cards on the page with live stock data.
++   * Looks for elements with data-sku="QC-T001" or data-product-id="..." attributes.
++   *
++   * Example HTML:
++   *   <div data-sku="QC-T001">
++   *     <span class="qc-stock-badge"></span>
++   *     <button class="qc-add-to-cart">Add to Cart</button>
++   *   </div>
++   */
++  async syncInventoryBadges() {
++    try {
++      const products = await QC.getProducts();
++      const byId  = Object.fromEntries(products.map(p => [p.id,  p]));
++      const bySku = Object.fromEntries(products.map(p => [p.sku, p]));
++
++      document.querySelectorAll('[data-sku],[data-product-id]').forEach(el => {
++        const p = bySku[el.dataset.sku] || byId[el.dataset.productId];
++        if (!p) return;
++
++        const badge = el.querySelector('.qc-stock-badge');
++        const cartBtn = el.querySelector('.qc-add-to-cart');
++
++        if (badge) {
++          badge.textContent = p.inStock
++            ? (p.lowStock ? `🔥 Only ${p.inventory} Left!` : '')
++            : '⚠️ Sold Out';
++          badge.style.display = (!p.inStock || p.lowStock) ? '' : 'none';
++        }
++        if (cartBtn) {
++          cartBtn.disabled = !p.inStock;
++          cartBtn.textContent = p.inStock ? 'Add to Cart' : 'Sold Out';
++        }
++      });
++    } catch (err) {
++      console.warn('[QC] Could not sync inventory badges:', err.message);
++    }
++  },
++};
++
++// Auto-run: sync inventory badges on page load if any tagged elements exist
++document.addEventListener('DOMContentLoaded', () => {
++  if (document.querySelector('[data-sku],[data-product-id]')) {
++    QC.syncInventoryBadges();
++  }
++});
++
++// Expose globally so inline onclick handlers can access it
++window.QC = QC;
+-- 
+2.43.0
+
+
+From 16b464a440c791f3a3e70166bd15d5dd33ab344a Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 7 Aug 2026 01:14:31 +0000
+Subject: [PATCH 2/2] fix: add admin.queenscustoms.shop to .godaddy and
+ vite.config allowedHosts
+
+---
+ .godaddy       | 5 ++++-
+ vite.config.js | 2 +-
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/.godaddy b/.godaddy
+index e12ef7a..434e249 100644
+--- a/.godaddy
++++ b/.godaddy
+@@ -11,6 +11,9 @@
+     "ltibyjmichael.com",
+     "www.ltibyjmichael.com",
+     "designbyjmichael.com",
+-    "www.designbyjmichael.com"
++    "www.designbyjmichael.com",
++    "queenscustoms.shop",
++    "www.queenscustoms.shop",
++    "admin.queenscustoms.shop"
+   ]
+ }
+diff --git a/vite.config.js b/vite.config.js
+index a731990..855460c 100644
+--- a/vite.config.js
++++ b/vite.config.js
+@@ -1 +1 @@
+-module.exports = { server: { allowedHosts: ['myk.ac', 'www.myk.ac', 'pate.myk.ac', 'lti.myk.ac', 'patemusic.live', 'www.patemusic.live', 'ltibyjmichael.com', 'www.ltibyjmichael.com', 'designbyjmichael.com', 'www.designbyjmichael.com'] }, preview: { allowedHosts: true } };
++module.exports = { server: { allowedHosts: ['myk.ac', 'www.myk.ac', 'pate.myk.ac', 'lti.myk.ac', 'patemusic.live', 'www.patemusic.live', 'ltibyjmichael.com', 'www.ltibyjmichael.com', 'designbyjmichael.com', 'www.designbyjmichael.com', 'queenscustoms.shop', 'www.queenscustoms.shop', 'admin.queenscustoms.shop'] }, preview: { allowedHosts: true } };
+-- 
+2.43.0
+

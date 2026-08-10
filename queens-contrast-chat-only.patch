@@ -1,0 +1,679 @@
+From fb68088944421145b377214d6f7d806799ad95b6 Mon Sep 17 00:00:00 2001
+From: Cursor Agent <cursoragent@cursor.com>
+Date: Fri, 7 Aug 2026 19:13:27 +0000
+Subject: [PATCH] fix: readable contrast + floating Queen Chat avatar
+
+Remove the light-scheme overrides that painted dark text onto forced-dark
+sections, bump muted/secondary colors, pin the About artist badge on the
+photo, brighten admin labels, and add a Vibe Queen chat widget that posts
+to /api/inquiries.
+---
+ admin/index.html |   4 +-
+ app.js           |  22 ++-
+ index.html       |   1 +
+ queen-chat.js    | 174 ++++++++++++++++++++++
+ style.css        | 380 ++++++++++++++++++++++++++++++++++++++++++-----
+ 5 files changed, 536 insertions(+), 45 deletions(-)
+ create mode 100644 queen-chat.js
+
+diff --git a/admin/index.html b/admin/index.html
+index a024fcd..69a3551 100644
+--- a/admin/index.html
++++ b/admin/index.html
+@@ -11,8 +11,8 @@
+     :root {
+       --pink: #FF1A8C; --pink-dim: rgba(255,26,140,0.12); --pink-glow: rgba(255,26,140,0.3);
+       --bg: #0d0d10; --surface: #141418; --surface-2: #1c1c22;
+-      --border: rgba(255,255,255,0.07); --text: #f0f0f5;
+-      --text-2: rgba(240,240,245,0.65); --text-3: rgba(240,240,245,0.38);
++      --border: rgba(255,255,255,0.12); --text: #f7f7fb;
++      --text-2: rgba(247,247,251,0.82); --text-3: rgba(247,247,251,0.62);
+       --green: #22c55e; --amber: #f59e0b; --red: #ef4444; --blue: #3b82f6;
+       --font-display: 'Clash Display', sans-serif; --font-body: 'Satoshi', sans-serif;
+       --radius: 14px; --radius-sm: 8px;
+diff --git a/app.js b/app.js
+index b0120bb..929434a 100644
+--- a/app.js
++++ b/app.js
+@@ -869,13 +869,27 @@
+       });
+     }
+ 
+-    // Contact form
++    // Contact form → inquiries inbox
+     const contactForm = document.getElementById('contact-form');
+     if (contactForm) {
+-      contactForm.addEventListener('submit', e => {
++      contactForm.addEventListener('submit', async e => {
+         e.preventDefault();
+-        showToast('Message sent! The Vibe Queen will reply soon 💌', 'success');
+-        contactForm.reset();
++        const name = (document.getElementById('c-name') || {}).value || '';
++        const email = (document.getElementById('c-email') || {}).value || '';
++        const subject = (document.getElementById('c-subj') || {}).value || 'Contact Form';
++        const message = (document.getElementById('c-msg') || {}).value || '';
++        try {
++          const res = await fetch('/api/inquiries', {
++            method: 'POST',
++            headers: { 'Content-Type': 'application/json' },
++            body: JSON.stringify({ name, email, subject, message, source: 'contact-form' }),
++          });
++          if (!res.ok) throw new Error('fail');
++          showToast('Message sent! The Vibe Queen will reply soon 💌', 'success');
++          contactForm.reset();
++        } catch (err) {
++          showToast("Couldn't reach inbox — email wired4365@aol.com or try again 👑", 'error');
++        }
+       });
+     }
+ 
+diff --git a/index.html b/index.html
+index 9bbfed4..b2100f1 100644
+--- a/index.html
++++ b/index.html
+@@ -1362,5 +1362,6 @@
+ <script src="tiktok.js?v=1780617330"></script>
+ <script src="music.js?v=1780617330"></script>
+ <script src="checkout.js?v=1780617330"></script>
++<script src="queen-chat.js?v=1780618000"></script>
+ </body>
+ </html>
+diff --git a/queen-chat.js b/queen-chat.js
+new file mode 100644
+index 0000000..9c61326
+--- /dev/null
++++ b/queen-chat.js
+@@ -0,0 +1,174 @@
++/* Queens Custom Creations — Queen Chat (The Vibe Queen) */
++(function () {
++  const AVATAR = 'assets/artist.jpg';
++  const QUICK = [
++    'How much for a custom tumbler?',
++    'How long does shipping take?',
++    'Can I send my own design?',
++    'Do you do bulk / party orders?',
++  ];
++
++  const REPLIES = {
++    price: "Customs start at $40. Price depends on size, glitter, and how detailed your design is — drop what you're dreaming up and I'll quote you 👑",
++    ship: 'Most customs ship in about 2–3 weeks (bulk can take longer). Rush options are available when I have studio space — ask and I\'ll check!',
++    design: 'Yes queen! Upload inspo, a screenshot, or describe the vibe in Queens Studio / this chat. I\'ll make it one-of-a-kind.',
++    bulk: 'Absolutely — birthday squads, bridal parties, team cups, all of it. Tell me quantity + theme and I\'ll send bulk pricing.',
++    default: "Got it — leave your name, email, and message below and I'll reply personally (usually within 24 hours). 💕",
++  };
++
++  function guessReply(text) {
++    const t = text.toLowerCase();
++    if (/price|cost|how much|\$/.test(t)) return REPLIES.price;
++    if (/ship|deliver|turnaround|how long|week/.test(t)) return REPLIES.ship;
++    if (/design|upload|photo|logo|custom idea|inspo/.test(t)) return REPLIES.design;
++    if (/bulk|party|squad|bridal|team|dozen/.test(t)) return REPLIES.bulk;
++    return REPLIES.default;
++  }
++
++  function el(html) {
++    const t = document.createElement('template');
++    t.innerHTML = html.trim();
++    return t.content.firstElementChild;
++  }
++
++  const root = el(`
++<div class="queen-chat" id="queen-chat" aria-live="polite">
++  <div class="queen-chat-panel" id="qc-panel" role="dialog" aria-label="Chat with The Vibe Queen" hidden>
++    <div class="qc-header">
++      <img src="${AVATAR}" alt="The Vibe Queen" width="44" height="44"/>
++      <div class="qc-header-text">
++        <strong>The Vibe Queen</strong>
++        <span>● Usually replies within 24 hrs</span>
++      </div>
++      <button type="button" class="qc-close" id="qc-close" aria-label="Close chat">×</button>
++    </div>
++    <div class="qc-messages" id="qc-messages"></div>
++    <div class="qc-chips" id="qc-chips"></div>
++    <form class="qc-form" id="qc-form">
++      <input type="text" id="qc-name" name="name" placeholder="Your name" required autocomplete="name"/>
++      <input type="email" id="qc-email" name="email" placeholder="Your email" required autocomplete="email"/>
++      <textarea id="qc-message" name="message" placeholder="Tell the Queen what you need…" required></textarea>
++      <button type="submit" class="qc-send" id="qc-send">Send to Queen 👑</button>
++      <div class="qc-status" id="qc-status"></div>
++    </form>
++  </div>
++  <button type="button" class="queen-chat-fab" id="qc-fab" aria-label="Chat with The Vibe Queen" aria-expanded="false">
++    <span class="qc-pulse" aria-hidden="true"></span>
++    <img src="${AVATAR}" alt="The Vibe Queen"/>
++    <span class="qc-dot" aria-hidden="true"></span>
++  </button>
++  <div class="queen-chat-tip" id="qc-tip">Chat with The Vibe Queen 👑</div>
++</div>`);
++
++  document.body.appendChild(root);
++
++  const chat = document.getElementById('queen-chat');
++  const panel = document.getElementById('qc-panel');
++  const fab = document.getElementById('qc-fab');
++  const closeBtn = document.getElementById('qc-close');
++  const messages = document.getElementById('qc-messages');
++  const chips = document.getElementById('qc-chips');
++  const form = document.getElementById('qc-form');
++  const status = document.getElementById('qc-status');
++  const tip = document.getElementById('qc-tip');
++  const msgInput = document.getElementById('qc-message');
++
++  function addBubble(text, who) {
++    const b = document.createElement('div');
++    b.className = 'qc-bubble ' + who;
++    b.textContent = text;
++    messages.appendChild(b);
++    messages.scrollTop = messages.scrollHeight;
++  }
++
++  function openChat() {
++    chat.classList.add('open');
++    panel.hidden = false;
++    fab.setAttribute('aria-expanded', 'true');
++    tip.classList.remove('show');
++    if (!messages.dataset.greeted) {
++      addBubble("Hey queen 👑 I'm The Vibe Queen — ask about customs, shipping, bulk, or drop your vision below.", 'queen');
++      messages.dataset.greeted = '1';
++    }
++  }
++
++  function closeChat() {
++    chat.classList.remove('open');
++    fab.setAttribute('aria-expanded', 'false');
++    setTimeout(() => {
++      if (!chat.classList.contains('open')) panel.hidden = true;
++    }, 220);
++  }
++
++  QUICK.forEach((label) => {
++    const btn = document.createElement('button');
++    btn.type = 'button';
++    btn.className = 'qc-chip';
++    btn.textContent = label;
++    btn.addEventListener('click', () => {
++      msgInput.value = label;
++      addBubble(label, 'user');
++      addBubble(guessReply(label), 'queen');
++      msgInput.focus();
++    });
++    chips.appendChild(btn);
++  });
++
++  fab.addEventListener('click', () => {
++    if (chat.classList.contains('open')) closeChat();
++    else openChat();
++  });
++  closeBtn.addEventListener('click', closeChat);
++
++  document.addEventListener('keydown', (e) => {
++    if (e.key === 'Escape' && chat.classList.contains('open')) closeChat();
++  });
++
++  setTimeout(() => tip.classList.add('show'), 1800);
++  setTimeout(() => tip.classList.remove('show'), 7000);
++
++  form.addEventListener('submit', async (e) => {
++    e.preventDefault();
++    const name = document.getElementById('qc-name').value.trim();
++    const email = document.getElementById('qc-email').value.trim();
++    const message = msgInput.value.trim();
++    if (!name || !email || !message) return;
++
++    const sendBtn = document.getElementById('qc-send');
++    sendBtn.disabled = true;
++    status.textContent = 'Sending…';
++    status.style.color = 'rgba(255,255,255,0.7)';
++
++    addBubble(message, 'user');
++
++    try {
++      const res = await fetch('/api/inquiries', {
++        method: 'POST',
++        headers: { 'Content-Type': 'application/json' },
++        body: JSON.stringify({
++          name,
++          email,
++          subject: 'Queen Chat',
++          message,
++          source: 'queen-chat',
++        }),
++      });
++      if (!res.ok) throw new Error('bad status');
++      addBubble(guessReply(message), 'queen');
++      addBubble("Message locked in — I'll hit your inbox soon. Meanwhile peek at Queens Studio for a full custom build ✨", 'queen');
++      status.textContent = 'Sent! Check your email for my reply 👑';
++      status.style.color = '#22c55e';
++      msgInput.value = '';
++      chips.style.display = 'none';
++    } catch (err) {
++      addBubble(
++        "My chat inbox is warming up — email me at wired4365@aol.com or use the contact form and I'll get back to you!",
++        'queen'
++      );
++      status.textContent = 'Couldn’t reach the server — try Contact below.';
++      status.style.color = '#f59e0b';
++    } finally {
++      sendBtn.disabled = false;
++    }
++  });
++})();
+diff --git a/style.css b/style.css
+index 206ac5e..772b464 100644
+--- a/style.css
++++ b/style.css
+@@ -603,7 +603,7 @@ h1,h2,h3,h4,h5 {
+   margin: 0 auto;
+   line-height: 1.7;
+ }
+-.section-sub.muted { color: rgba(255,255,255,0.6); }
++.section-sub.muted { color: rgba(255,255,255,0.88); }
+ 
+ /* Container shorthand */
+ .section > .section-hdr,
+@@ -1430,17 +1430,24 @@ select.fi { appearance: none; background-image: url("data:image/svg+xml,%3Csvg x
+ }
+ .about-body { display: flex; flex-direction: column; gap: 16px; }
+ .about-badge {
++  position: absolute;
++  bottom: 16px;
++  left: 16px;
++  z-index: 2;
+   display: inline-block;
+-  padding: 5px 14px;
+-  background: var(--pink-pale);
+-  border: 1px solid rgba(255,26,140,0.25);
++  padding: 7px 14px;
++  background: rgba(13, 13, 13, 0.88);
++  border: 1px solid rgba(255, 26, 140, 0.55);
+   border-radius: var(--radius-full);
+   font-size: 0.72rem;
+-  font-weight: 600;
++  font-weight: 700;
+   letter-spacing: 0.1em;
+   text-transform: uppercase;
+-  color: var(--pink);
++  color: #ffffff;
+   width: fit-content;
++  backdrop-filter: blur(8px);
++  -webkit-backdrop-filter: blur(8px);
++  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+ }
+ .about-title {
+   font-family: var(--font-display);
+@@ -4178,38 +4185,11 @@ body { padding-top: calc(36px + 74px) !important; }
+ .shop-gate-bg-video video { width:100% !important; height:100% !important; object-fit:cover !important; opacity:0.18 !important; }
+ .shop-gate-content { position: relative !important; z-index: 1 !important; }
+ 
+-/* ── LIGHT MODE (auto-detect from device) ───────────────── */
+-@media (prefers-color-scheme: light) {
+-  :root {
+-    --bg: #f8f4f6;
+-    --surface: #fff;
+-    --black: #1a0a12;
+-    --black-2: #2d1a24;
+-    --black-3: #f0e8ed;
+-    --text: #1a0a12;
+-    --text-2: #4a2a3a;
+-    --text-3: #8a5a6a;
+-    --border: rgba(180,80,120,0.2);
+-  }
+-  body { background: #f8f4f6 !important; color: #1a0a12 !important; }
+-  .site-header { background: rgba(255,255,255,0.92) !important; }
+-  .site-header .main-nav a { color: #1a0a12 !important; }
+-  .site-header .main-nav a:hover { color: #FF1A8C !important; }
+-  .site-header .icon-btn { color: #1a0a12 !important; }
+-  .announce-bar { background: #1a0a12 !important; }
+-  .section.bg-dark { background: #1a0a12 !important; }
+-  .section.bg-surface { background: #fff !important; }
+-  .p-card { background: #fff !important; border: 1px solid rgba(180,80,120,0.15) !important; }
+-  .p-card h3, .p-card .p-price { color: #1a0a12 !important; }
+-  #about .about-text p, .about-body p { color: #4a2a3a !important; }
+-  .contact-text p { color: #4a2a3a !important; }
+-  .contact-form { background: rgba(255,255,255,0.9) !important; border: 1px solid rgba(180,80,120,0.2) !important; }
+-  .contact-form input, .contact-form select, .contact-form textarea { background: #f8f4f6 !important; color: #1a0a12 !important; border: 1px solid rgba(180,80,120,0.3) !important; }
+-  .trust-bar { background: #f0e8ed !important; }
+-  .trust-item strong { color: #1a0a12 !important; }
+-  .trust-item span { color: #8a5a6a !important; }
+-  .site-footer { background: #1a0a12 !important; color: rgba(255,255,255,0.8) !important; }
+-}
++/* ── LIGHT MODE OFF for forced-dark shop ───────────────────
++   prefers-color-scheme:light used to paint dark text onto
++   forced-dark section backgrounds — text became invisible.
++   Shop stays dark; only explicit [data-theme="light"] UI chrome
++   (header icons etc.) is handled by theme toggle JS/CSS. */
+ 
+ /* ═══ AUTH MODAL PANEL SYSTEM ═══════════════════════════════ */
+ .auth-panel { display: none; padding: 24px 28px 28px; }
+@@ -4522,5 +4502,327 @@ body { padding-top: calc(36px + 74px) !important; }
+   color: #ffffff !important;
+ }
+ .section-hdr .section-sub:not(.muted) {
+-  color: rgba(255,255,255,0.7) !important;
++  color: rgba(255,255,255,0.88) !important;
++}
++
++/* ═══════════════════════════════════════════════════════════
++   CONTRAST + QUEEN CHAT — Aug 2026
++   ═══════════════════════════════════════════════════════════ */
++
++/* Stronger muted / secondary text on dark surfaces */
++.hero-sub { color: rgba(255, 255, 255, 0.9) !important; }
++.trust-sub,
++.tt-sub,
++.footer-brand .desc,
++.footer-col a,
++.footer-bottom p,
++.footer-bottom a {
++  color: rgba(255, 255, 255, 0.72) !important;
++}
++.footer-col a:hover { color: #FF1A8C !important; }
++.muted-text,
++.section-sub.muted,
++.inspo-upload-overlay + *,
++.vid-divider-overlay ~ * .section-sub {
++  color: rgba(255, 255, 255, 0.88) !important;
++}
++
++/* About avatar: readable on forced-dark #about */
++#about.bg-white,
++#about {
++  background: #111114 !important;
++}
++#about .about-title,
++#about .about-body p,
++#about .eyebrow-pink {
++  text-shadow: none;
++}
++#about .about-title { color: #ffffff !important; }
++#about .about-body p { color: rgba(255, 255, 255, 0.9) !important; }
++#about .stat {
++  background: rgba(255, 255, 255, 0.06) !important;
++  border-color: rgba(255, 26, 140, 0.28) !important;
++}
++#about .stat-n { color: #FF1A8C !important; }
++#about .stat-l { color: rgba(255, 255, 255, 0.7) !important; }
++#about .about-videos-label { color: rgba(255, 255, 255, 0.85) !important; }
++#about .about-img-wrap {
++  overflow: hidden;
++  box-shadow: 0 20px 50px rgba(255, 26, 140, 0.22);
++  border: 1px solid rgba(255, 26, 140, 0.35);
++}
++
++/* Contact / marketplace / sessions: keep form labels bright */
++.contact-form .fg label,
++.contact-text > p,
++.market-card p,
++.session-card p {
++  color: rgba(255, 255, 255, 0.85) !important;
++}
++
++/* Soften overlays that wash out copy */
++.inspo-vid-overlay,
++.vid-divider-overlay {
++  background: linear-gradient(
++    180deg,
++    rgba(13, 13, 13, 0.55) 0%,
++    rgba(13, 13, 13, 0.78) 100%
++  ) !important;
++}
++.hero-overlay {
++  background: linear-gradient(
++    135deg,
++    rgba(13, 13, 13, 0.82) 0%,
++    rgba(13, 13, 13, 0.45) 48%,
++    rgba(255, 26, 140, 0.18) 100%
++  ) !important;
++}
++.hero-bg .hero-video { opacity: 0.28 !important; }
++
++/* ── Queen Chat widget ───────────────────────────────────── */
++.queen-chat {
++  position: fixed;
++  bottom: 24px;
++  left: 20px;
++  z-index: 1000;
++  font-family: var(--font-body);
++}
++.queen-chat-fab {
++  width: 64px;
++  height: 64px;
++  border-radius: 50%;
++  border: 2px solid #FF1A8C;
++  padding: 0;
++  cursor: pointer;
++  overflow: hidden;
++  background: #111;
++  box-shadow: 0 8px 28px rgba(255, 26, 140, 0.45), 0 0 0 4px rgba(255, 26, 140, 0.15);
++  transition: transform 0.2s var(--ease-out), box-shadow 0.2s ease;
++  position: relative;
++}
++.queen-chat-fab:hover {
++  transform: scale(1.06);
++  box-shadow: 0 10px 34px rgba(255, 26, 140, 0.55), 0 0 0 5px rgba(255, 26, 140, 0.2);
++}
++.queen-chat-fab img {
++  width: 100%;
++  height: 100%;
++  object-fit: cover;
++  object-position: center top;
++  display: block;
++}
++.queen-chat-fab .qc-pulse {
++  position: absolute;
++  inset: -4px;
++  border-radius: 50%;
++  border: 2px solid rgba(255, 26, 140, 0.55);
++  animation: qcPulse 2.2s ease-out infinite;
++  pointer-events: none;
++}
++@keyframes qcPulse {
++  0% { transform: scale(1); opacity: 0.7; }
++  100% { transform: scale(1.35); opacity: 0; }
++}
++.queen-chat-fab .qc-dot {
++  position: absolute;
++  top: 4px;
++  right: 4px;
++  width: 12px;
++  height: 12px;
++  background: #22c55e;
++  border: 2px solid #0d0d0d;
++  border-radius: 50%;
++}
++.queen-chat-tip {
++  position: absolute;
++  left: 76px;
++  bottom: 14px;
++  white-space: nowrap;
++  background: rgba(13, 13, 13, 0.94);
++  color: #fff;
++  border: 1px solid rgba(255, 26, 140, 0.45);
++  border-radius: 999px;
++  padding: 8px 14px;
++  font-size: 0.78rem;
++  font-weight: 600;
++  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
++  opacity: 0;
++  transform: translateX(-6px);
++  pointer-events: none;
++  transition: opacity 0.25s ease, transform 0.25s ease;
++}
++.queen-chat:not(.open) .queen-chat-tip.show {
++  opacity: 1;
++  transform: translateX(0);
++}
++.queen-chat-panel {
++  position: absolute;
++  bottom: 76px;
++  left: 0;
++  width: min(360px, calc(100vw - 32px));
++  background: #141418;
++  border: 1px solid rgba(255, 26, 140, 0.35);
++  border-radius: 20px;
++  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04);
++  overflow: hidden;
++  opacity: 0;
++  transform: translateY(12px) scale(0.96);
++  pointer-events: none;
++  transition: opacity 0.22s var(--ease-out), transform 0.22s var(--ease-out);
++  display: flex;
++  flex-direction: column;
++  max-height: min(520px, calc(100vh - 120px));
++}
++.queen-chat.open .queen-chat-panel {
++  opacity: 1;
++  transform: translateY(0) scale(1);
++  pointer-events: all;
++}
++.qc-header {
++  display: flex;
++  align-items: center;
++  gap: 12px;
++  padding: 14px 16px;
++  background: linear-gradient(135deg, #1a0a12 0%, #2a1020 100%);
++  border-bottom: 1px solid rgba(255, 26, 140, 0.25);
++}
++.qc-header img {
++  width: 44px;
++  height: 44px;
++  border-radius: 50%;
++  object-fit: cover;
++  object-position: center top;
++  border: 2px solid #FF1A8C;
++}
++.qc-header-text { flex: 1; min-width: 0; }
++.qc-header-text strong {
++  display: block;
++  color: #fff;
++  font-family: var(--font-display);
++  font-size: 0.95rem;
++}
++.qc-header-text span {
++  display: block;
++  color: rgba(255, 255, 255, 0.72);
++  font-size: 0.72rem;
++  margin-top: 2px;
++}
++.qc-close {
++  width: 32px;
++  height: 32px;
++  border-radius: 50%;
++  border: 1px solid rgba(255, 255, 255, 0.15);
++  background: transparent;
++  color: #fff;
++  font-size: 1.1rem;
++  line-height: 1;
++  cursor: pointer;
++}
++.qc-close:hover { border-color: #FF1A8C; color: #FF1A8C; }
++.qc-messages {
++  flex: 1;
++  overflow-y: auto;
++  padding: 14px 14px 8px;
++  display: flex;
++  flex-direction: column;
++  gap: 10px;
++  background: #0f0f12;
++}
++.qc-bubble {
++  max-width: 88%;
++  padding: 10px 12px;
++  border-radius: 14px;
++  font-size: 0.86rem;
++  line-height: 1.45;
++  color: #fff;
++}
++.qc-bubble.queen {
++  align-self: flex-start;
++  background: rgba(255, 26, 140, 0.16);
++  border: 1px solid rgba(255, 26, 140, 0.35);
++  border-bottom-left-radius: 4px;
++}
++.qc-bubble.user {
++  align-self: flex-end;
++  background: rgba(255, 255, 255, 0.1);
++  border: 1px solid rgba(255, 255, 255, 0.16);
++  border-bottom-right-radius: 4px;
++}
++.qc-chips {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 6px;
++  padding: 0 14px 10px;
++  background: #0f0f12;
++}
++.qc-chip {
++  padding: 6px 10px;
++  border-radius: 999px;
++  border: 1px solid rgba(255, 26, 140, 0.4);
++  background: rgba(255, 26, 140, 0.1);
++  color: #fff;
++  font-size: 0.72rem;
++  font-weight: 600;
++  cursor: pointer;
++}
++.qc-chip:hover { background: rgba(255, 26, 140, 0.22); }
++.qc-form {
++  padding: 12px 14px 14px;
++  border-top: 1px solid rgba(255, 255, 255, 0.08);
++  background: #141418;
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++}
++.qc-form input,
++.qc-form textarea {
++  width: 100%;
++  box-sizing: border-box;
++  padding: 10px 12px;
++  border-radius: 10px;
++  border: 1px solid rgba(255, 255, 255, 0.16);
++  background: rgba(255, 255, 255, 0.06);
++  color: #fff;
++  font-size: 0.84rem;
++  outline: none;
++  font-family: inherit;
++}
++.qc-form input::placeholder,
++.qc-form textarea::placeholder { color: rgba(255, 255, 255, 0.45); }
++.qc-form input:focus,
++.qc-form textarea:focus {
++  border-color: #FF1A8C;
++  box-shadow: 0 0 0 3px rgba(255, 26, 140, 0.18);
++}
++.qc-form textarea { min-height: 64px; resize: vertical; }
++.qc-send {
++  align-self: flex-end;
++  padding: 10px 18px;
++  border-radius: 999px;
++  border: none;
++  background: #FF1A8C;
++  color: #fff;
++  font-weight: 700;
++  font-size: 0.84rem;
++  cursor: pointer;
++  font-family: var(--font-display);
++}
++.qc-send:hover { opacity: 0.9; }
++.qc-send:disabled { opacity: 0.5; cursor: not-allowed; }
++.qc-status {
++  font-size: 0.72rem;
++  color: rgba(255, 255, 255, 0.65);
++  min-height: 1em;
++}
++
++@media (max-width: 640px) {
++  .queen-chat { bottom: 16px; left: 12px; }
++  .queen-chat-fab { width: 58px; height: 58px; }
++  .queen-chat-tip { display: none; }
++  .queen-chat-panel {
++    bottom: 70px;
++    width: min(340px, calc(100vw - 24px));
++  }
++  /* Keep clear of vibe player on the right */
++  .vibe-player { bottom: 16px; right: 12px; }
+ }
+-- 
+2.43.0
+
