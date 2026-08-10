@@ -67,8 +67,367 @@ index 52f8cdf..e3d61f1 100644
 -FACEBOOK_APP_ID=
 -FACEBOOK_APP_SECRET=
 +# Without a key, both coaches still work using free built-in scripts.
+diff --git a/admin/guide-browser.js b/admin/guide-browser.js
+new file mode 100644
+index 0000000..60d118e
+--- /dev/null
++++ b/admin/guide-browser.js
+@@ -0,0 +1,353 @@
++/**
++ * Setup Guide Browser — side panel with checklist + optional iframe preview.
++ * Many dashboards (Stripe, Google) block iframes; we always open a new tab
++ * and keep the checklist here so she can follow along.
++ */
++(function () {
++  'use strict';
++
++  const GUIDES = {
++    stripe_keys: {
++      title: 'Stripe API keys',
++      url: 'https://dashboard.stripe.com/apikeys',
++      blurb: 'Get your pk_ and sk_ keys so customers can pay you.',
++      steps: [
++        'Sign in to Stripe (or create a free account).',
++        'Stay on Developers → API keys.',
++        'Copy the Publishable key (starts with pk_) — paste it in Setup.',
++        'Reveal and copy the Secret key (starts with sk_) — paste it in Setup.',
++        'Come back here and tap Save & Activate.',
++      ],
++    },
++    stripe_register: {
++      title: 'Create a Stripe account',
++      url: 'https://dashboard.stripe.com/register',
++      blurb: 'Brand-new to Stripe? Start here, then grab your API keys.',
++      steps: [
++        'Create your Stripe account with your business email.',
++        'Finish the short business details Stripe asks for.',
++        'Then open API keys and copy pk_ + sk_ into Setup.',
++      ],
++    },
++    paypal: {
++      title: 'PayPal Developer',
++      url: 'https://developer.paypal.com/dashboard/applications',
++      blurb: 'Optional second checkout button.',
++      steps: [
++        'Sign in to PayPal Developer (not only paypal.com).',
++        'Open Apps & Credentials → Live.',
++        'Create an app if you do not have one.',
++        'Copy Client ID and Secret into Setup → PayPal.',
++      ],
++    },
++    google: {
++      title: 'Google Credentials',
++      url: 'https://console.cloud.google.com/apis/credentials',
++      blurb: '“Continue with Google” for shoppers.',
++      steps: [
++        'Sign in with the Google account for Queens Customs.',
++        'Create (or pick) a project.',
++        'Create Credentials → OAuth client ID → Web application.',
++        'Add redirect URI exactly: https://queenscustoms.shop/api/auth/google/callback',
++        'Copy Client ID + Secret into Setup and turn Enable ON.',
++      ],
++    },
++    apple: {
++      title: 'Apple Developer',
++      url: 'https://developer.apple.com/account/resources/identifiers/list',
++      blurb: 'Optional. Needs a paid Apple Developer account.',
++      steps: [
++        'Sign in to Apple Developer.',
++        'Create a Services ID for Sign in with Apple.',
++        'Set return URL: https://queenscustoms.shop/api/auth/apple/callback',
++        'Paste Services ID, Team ID, Key ID, and .p8 key into Setup.',
++      ],
++    },
++    facebook: {
++      title: 'Meta for Developers',
++      url: 'https://developers.facebook.com/apps/',
++      blurb: 'Optional Facebook login button.',
++      steps: [
++        'Create or open your Meta app.',
++        'Add Facebook Login for Web.',
++        'Set redirect: https://queenscustoms.shop/api/auth/facebook/callback',
++        'Copy App ID + App Secret into Setup.',
++      ],
++    },
++    etsy: {
++      title: 'Etsy Developers',
++      url: 'https://www.etsy.com/developers/your-apps',
++      blurb: 'Optional — only if you sell on Etsy.',
++      steps: [
++        'Sign in with your Etsy seller account.',
++        'Open Your Apps and create / open an app.',
++        'Copy the API key and your Shop ID into Setup.',
++      ],
++    },
++    amazon: {
++      title: 'Amazon Seller Central',
++      url: 'https://sellercentral.amazon.com/',
++      blurb: 'Optional — only if you sell on Amazon.',
++      steps: [
++        'Sign in to Seller Central.',
++        'Find your Seller ID under Settings / Account info.',
++        'Paste Seller ID (and MWS token if you have one) into Setup.',
++      ],
++    },
++    tiktok: {
++      title: 'TikTok Shop Partner',
++      url: 'https://partner.tiktokshop.com/',
++      blurb: 'Optional — only if you use TikTok Shop.',
++      steps: [
++        'Sign in to TikTok Shop Partner Center.',
++        'Open your app credentials.',
++        'Copy App Key + App Secret into Setup.',
++      ],
++    },
++    mailchimp: {
++      title: 'Mailchimp API keys',
++      url: 'https://admin.mailchimp.com/account/api/',
++      blurb: 'Optional newsletters.',
++      steps: [
++        'Sign in to Mailchimp.',
++        'Create an API key and copy it.',
++        'Copy your Audience / List ID.',
++        'Paste both into Setup → Email.',
++      ],
++    },
++    winks: {
++      title: 'Winks Design Studio',
++      url: '/shop/',
++      blurb: 'Build customs the same way shoppers do.',
++      steps: [
++        'Browse the studio tools.',
++        'Try a sample design so you know what customers see.',
++        'Close this guide when you are done.',
++      ],
++    },
++  };
++
++  let popupWin = null;
++
++  function el(html) {
++    const t = document.createElement('template');
++    t.innerHTML = html.trim();
++    return t.content.firstElementChild;
++  }
++
++  function ensureDom() {
++    if (document.getElementById('guide-browser')) return;
++    if (!document.getElementById('guide-browser-critical-css')) {
++      const style = document.createElement('style');
++      style.id = 'guide-browser-critical-css';
++      style.textContent = `
++        #guide-browser {
++          position: fixed; inset: 0; z-index: 14000; display: none;
++          background: rgba(0,0,0,0.62); padding: 12px;
++          align-items: stretch; justify-content: center;
++        }
++        #guide-browser.open { display: flex !important; }
++        #guide-browser .gb-shell {
++          width: min(1100px, 100%); max-height: calc(100vh - 24px);
++          background: #141418; border: 1px solid rgba(255,26,140,0.45);
++          border-radius: 18px; overflow: hidden; display: flex; flex-direction: column;
++          box-shadow: 0 24px 64px rgba(0,0,0,0.55);
++        }
++        #guide-browser .gb-top {
++          display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
++          padding: 12px 14px; background: linear-gradient(135deg,#1a0a12,#2a1020);
++          border-bottom: 1px solid rgba(255,26,140,0.28);
++        }
++        #guide-browser .gb-top img {
++          width: 36px; height: 36px; border-radius: 50%; object-fit: cover;
++          border: 2px solid #FF1A8C; flex-shrink: 0;
++        }
++        #guide-browser .gb-title { flex: 1; min-width: 140px; }
++        #guide-browser .gb-title strong { display: block; color: #fff; font-size: 0.95rem; }
++        #guide-browser .gb-title span { color: rgba(255,255,255,0.7); font-size: 0.75rem; }
++        #guide-browser .gb-actions { display: flex; gap: 8px; flex-wrap: wrap; }
++        #guide-browser .gb-btn {
++          border: 1px solid rgba(255,26,140,0.5); background: rgba(255,26,140,0.18);
++          color: #fff; border-radius: 999px; padding: 8px 12px; font-size: 0.78rem;
++          font-weight: 700; cursor: pointer;
++        }
++        #guide-browser .gb-btn.ghost { background: transparent; border-color: rgba(255,255,255,0.25); }
++        #guide-browser .gb-body {
++          display: grid; grid-template-columns: minmax(240px, 320px) 1fr;
++          min-height: 0; flex: 1; background: #0f0f12;
++        }
++        #guide-browser .gb-steps {
++          padding: 14px; overflow-y: auto; border-right: 1px solid rgba(255,255,255,0.08);
++        }
++        #guide-browser .gb-steps h4 {
++          margin: 0 0 8px; color: #fff; font-size: 0.85rem;
++        }
++        #guide-browser .gb-steps p {
++          margin: 0 0 12px; color: rgba(255,255,255,0.72); font-size: 0.78rem; line-height: 1.45;
++        }
++        #guide-browser .gb-step {
++          display: flex; gap: 10px; align-items: flex-start;
++          padding: 10px 10px; margin-bottom: 8px; border-radius: 12px;
++          border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04);
++          cursor: pointer; color: #fff; font-size: 0.8rem; line-height: 1.4;
++        }
++        #guide-browser .gb-step.done {
++          border-color: rgba(34,197,94,0.4); background: rgba(34,197,94,0.1);
++        }
++        #guide-browser .gb-step input { margin-top: 2px; accent-color: #FF1A8C; width: 16px; height: 16px; }
++        #guide-browser .gb-frame-wrap {
++          position: relative; min-height: 280px; background: #0a0a0c;
++        }
++        #guide-browser .gb-frame-wrap iframe {
++          position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff;
++        }
++        #guide-browser .gb-fallback {
++          position: absolute; inset: 0; display: flex; flex-direction: column;
++          align-items: center; justify-content: center; gap: 12px; padding: 24px; text-align: center;
++          color: rgba(255,255,255,0.85); font-size: 0.88rem; line-height: 1.5;
++          background: radial-gradient(ellipse at top, rgba(255,26,140,0.12), transparent 55%), #0f0f12;
++        }
++        #guide-browser .gb-fallback strong { color: #fff; display: block; font-size: 1rem; margin-bottom: 4px; }
++        #guide-browser .gb-url {
++          font-size: 0.72rem; color: rgba(255,255,255,0.55); word-break: break-all;
++          max-width: 90%;
++        }
++        @media (max-width: 800px) {
++          #guide-browser .gb-body { grid-template-columns: 1fr; }
++          #guide-browser .gb-frame-wrap { min-height: 220px; }
++          #guide-browser .gb-steps { max-height: 42vh; border-right: none; border-bottom: 1px solid rgba(255,255,255,0.08); }
++        }
++      `;
++      document.head.appendChild(style);
++    }
++
++    const root = el(`
++<div id="guide-browser" aria-hidden="true">
++  <div class="gb-shell" role="dialog" aria-modal="true" aria-label="Setup guide browser">
++    <div class="gb-top">
++      <img src="/assets/artist.jpg" alt="" onerror="this.outerHTML='<span style=&quot;font-size:1.4rem&quot;>👑</span>'"/>
++      <div class="gb-title">
++        <strong id="gb-title">Guide</strong>
++        <span id="gb-blurb">Follow the steps — I’ll stay with you.</span>
++      </div>
++      <div class="gb-actions">
++        <button type="button" class="gb-btn" id="gb-reopen">Open site again</button>
++        <button type="button" class="gb-btn ghost" id="gb-close">Done</button>
++      </div>
++    </div>
++    <div class="gb-body">
++      <div class="gb-steps">
++        <h4>Do this</h4>
++        <p id="gb-lead">Check each step as you finish it.</p>
++        <div id="gb-step-list"></div>
++      </div>
++      <div class="gb-frame-wrap">
++        <iframe id="gb-iframe" title="Guide preview" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox"></iframe>
++        <div class="gb-fallback" id="gb-fallback">
++          <div>
++            <strong>Watch + follow along here</strong>
++            We opened the site in a new tab (most dashboards block in-page browsers).
++            Keep this checklist open and check off each step.
++          </div>
++          <div class="gb-url" id="gb-url"></div>
++          <button type="button" class="gb-btn" id="gb-fallback-open">Open the site</button>
++        </div>
++      </div>
++    </div>
++  </div>
++</div>`);
++    document.body.appendChild(root);
++
++    document.getElementById('gb-close').addEventListener('click', close);
++    document.getElementById('gb-reopen').addEventListener('click', () => {
++      const url = root.dataset.url;
++      if (url) openExternal(url);
++    });
++    document.getElementById('gb-fallback-open').addEventListener('click', () => {
++      const url = root.dataset.url;
++      if (url) openExternal(url);
++    });
++    root.addEventListener('click', (e) => {
++      if (e.target === root) close();
++    });
++    document.addEventListener('keydown', (e) => {
++      if (e.key === 'Escape' && root.classList.contains('open')) close();
++    });
++  }
++
++  function openExternal(url) {
++    try {
++      if (popupWin && !popupWin.closed) {
++        popupWin.location.href = url;
++        popupWin.focus();
++        return popupWin;
++      }
++    } catch (_) { /* ignore */ }
++    popupWin = window.open(url, 'qcc_guide_browser', 'noopener,noreferrer');
++    return popupWin;
++  }
++
++  function close() {
++    const root = document.getElementById('guide-browser');
++    if (!root) return;
++    root.classList.remove('open');
++    root.setAttribute('aria-hidden', 'true');
++    const iframe = document.getElementById('gb-iframe');
++    if (iframe) iframe.removeAttribute('src');
++  }
++
++  function open(guideId, opts) {
++    opts = opts || {};
++    ensureDom();
++    const guide = GUIDES[guideId] || {
++      title: opts.title || 'Guide',
++      url: opts.url || guideId,
++      blurb: opts.blurb || 'Follow the steps on the left.',
++      steps: opts.steps || ['Open the site', 'Copy what you need', 'Paste it back into Setup', 'Save'],
++    };
++    const root = document.getElementById('guide-browser');
++    const url = guide.url;
++    root.dataset.url = url;
++    document.getElementById('gb-title').textContent = guide.title;
++    document.getElementById('gb-blurb').textContent = guide.blurb;
++    document.getElementById('gb-lead').textContent = 'Check each box as you finish — then paste into Setup.';
++    document.getElementById('gb-url').textContent = url;
++
++    const list = document.getElementById('gb-step-list');
++    list.innerHTML = '';
++    (guide.steps || []).forEach((text, i) => {
++      const row = document.createElement('label');
++      row.className = 'gb-step';
++      row.innerHTML = '<input type="checkbox"/> <span><strong>' + (i + 1) + '.</strong> ' + text + '</span>';
++      const box = row.querySelector('input');
++      box.addEventListener('change', () => {
++        row.classList.toggle('done', box.checked);
++      });
++      list.appendChild(row);
++    });
++
++    const iframe = document.getElementById('gb-iframe');
++    const fallback = document.getElementById('gb-fallback');
++    // Local paths can embed; external dashboards usually cannot.
++    const canEmbed = url.startsWith('/') || url.indexOf(location.host) !== -1;
++    if (canEmbed) {
++      fallback.style.display = 'none';
++      iframe.style.display = 'block';
++      iframe.src = url;
++    } else {
++      iframe.style.display = 'none';
++      iframe.removeAttribute('src');
++      fallback.style.display = 'flex';
++      openExternal(url);
++    }
++
++    root.classList.add('open');
++    root.setAttribute('aria-hidden', 'false');
++  }
++
++  window.QCCGuideBrowser = {
++    open: open,
++    close: close,
++    guides: GUIDES,
++  };
++})();
 diff --git a/admin/index.html b/admin/index.html
-index 3828cc1..6397456 100644
+index 3828cc1..798b1d2 100644
 --- a/admin/index.html
 +++ b/admin/index.html
 @@ -52,7 +52,8 @@
@@ -93,18 +452,60 @@ index 3828cc1..6397456 100644
      .integration-grid { display: grid; gap: 20px; }
      .integration-block { padding: 20px; background: var(--surface-2); border-radius: var(--radius-sm); border: 1px solid var(--border); }
      .integration-block h4 { font-family: var(--font-display); font-size: 0.95rem; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
-@@ -223,6 +219,20 @@
+@@ -223,6 +219,62 @@
      .howto ol { margin: 0; padding-left: 1.2rem; color: var(--text-2); font-size: 0.82rem; line-height: 1.55; }
      .howto ol li { margin-bottom: 6px; }
      .howto a { color: var(--pink); text-decoration: underline; }
 +    .plain-blurb { font-size: 0.82rem; color: var(--text-2); line-height: 1.5; margin: 0 0 12px; }
-+    .btn-open-site {
++    .btn-open-site, .btn-show-guide {
 +      display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 999px;
 +      border: 1px solid var(--pink); background: rgba(255,26,140,0.16); color: #fff;
 +      font-family: var(--font-display); font-size: 0.78rem; font-weight: 600; cursor: pointer;
 +      text-decoration: none; margin: 0 8px 12px 0;
 +    }
-+    .btn-open-site:hover { background: rgba(255,26,140,0.28); }
++    .btn-open-site:hover, .btn-show-guide:hover { background: rgba(255,26,140,0.28); }
++    .btn-show-guide { background: #FF1A8C; border-color: #FF1A8C; }
++    .btn-show-guide:hover { background: #e0157c; }
++    .link-row { display: flex; flex-wrap: wrap; gap: 0; align-items: center; margin-bottom: 4px; }
++    .topbar-right { display: flex; align-items: center; gap: 12px; }
++    .topbar-queen {
++      display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px 6px 6px;
++      border-radius: 999px; border: 1px solid rgba(255,26,140,0.5);
++      background: rgba(255,26,140,0.14); color: #fff; cursor: pointer;
++      font-family: var(--font-display); font-size: 0.78rem; font-weight: 700;
++    }
++    .topbar-queen img {
++      width: 28px; height: 28px; border-radius: 50%; object-fit: cover; object-position: center top;
++      border: 2px solid var(--pink);
++    }
++    .ops-hero {
++      margin-bottom: 18px; padding: 18px 20px; border-radius: var(--radius);
++      background: linear-gradient(135deg, rgba(255,26,140,0.16), rgba(26,10,18,0.9));
++      border: 1px solid rgba(255,26,140,0.35);
++    }
++    .ops-hero h2 { font-family: var(--font-display); font-size: 1.25rem; margin: 0 0 6px; }
++    .ops-hero p { margin: 0; color: var(--text-2); font-size: 0.88rem; line-height: 1.5; }
++    .ops-quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
++    .ops-quick-btn {
++      border: 1px solid rgba(255,26,140,0.45); background: rgba(255,26,140,0.14); color: #fff;
++      border-radius: 999px; padding: 10px 14px; font-size: 0.8rem; font-weight: 700; cursor: pointer;
++      font-family: var(--font-display);
++    }
++    .ops-quick-btn:hover { background: rgba(255,26,140,0.28); }
++    button.stat-card, .clickable-stat {
++      text-align: left; width: 100%; cursor: pointer; font: inherit; color: inherit;
++      transition: transform 0.15s ease, border-color 0.15s ease;
++    }
++    button.stat-card:hover, .clickable-stat:hover { transform: translateY(-2px); border-color: var(--pink); }
++    .setup-step-jump {
++      display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px;
++    }
++    .setup-step-jump button {
++      border: 1px solid var(--border); background: var(--surface-2); color: var(--text-2);
++      border-radius: 999px; padding: 6px 10px; font-size: 0.72rem; font-weight: 600; cursor: pointer;
++    }
++    .setup-step-jump button.current { border-color: var(--pink); color: #fff; background: rgba(255,26,140,0.18); }
++    .setup-step-jump button.done { color: var(--green); border-color: rgba(34,197,94,0.35); }
 +    .btn-ask-coach {
 +      display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 999px;
 +      border: 1px solid var(--border); background: transparent; color: var(--text-2);
@@ -114,7 +515,7 @@ index 3828cc1..6397456 100644
      .status-list { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 8px; }
      .status-list li {
        display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-2);
-@@ -251,10 +261,94 @@
+@@ -251,10 +303,94 @@
      #toast.success { border-color: var(--green); color: var(--green); }
      #toast.error { border-color: var(--red); color: var(--red); }
  
@@ -210,7 +611,7 @@ index 3828cc1..6397456 100644
      @media (max-width: 900px) {
        .wizard-layout { grid-template-columns: 1fr; }
        .ai-panel { order: -1; }
-@@ -269,6 +363,16 @@
+@@ -269,6 +405,19 @@
        thead th:nth-child(3), tbody td:nth-child(3),
        thead th:nth-child(5), tbody td:nth-child(5) { display: none; }
        .step-labels { display: none; }
@@ -224,10 +625,13 @@ index 3828cc1..6397456 100644
 +        bottom: 76px !important;
 +      }
 +      .aq-fab { width: 58px !important; height: 58px !important; }
++      .topbar-queen span { display: none; }
++      .topbar-queen { padding: 4px; }
++      .ops-hero { padding: 14px 16px; }
      }
  </style>
  </head>
-@@ -303,6 +407,11 @@
+@@ -303,6 +452,11 @@
      <button class="nav-item" data-page="inquiries"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Inquiries</button>
      <button class="nav-item" data-page="products"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>Products</button>
      <button class="nav-item" data-page="admin-users"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Admin Users</button>
@@ -239,41 +643,86 @@ index 3828cc1..6397456 100644
    </nav>
    <div class="sidebar-footer"><button class="logout-btn" id="logout-btn">Sign Out</button></div>
  </aside>
-@@ -330,6 +439,15 @@
-         <div class="stat-card pink"><div class="stat-label">New Inquiries</div><div class="stat-val" id="stat-inquiries">0</div><div class="stat-sub">Unread</div></div>
-         <div class="stat-card"><div class="stat-label">Products</div><div class="stat-val" id="stat-products">0</div><div class="stat-sub">Active</div></div>
-       </div>
+@@ -317,18 +471,45 @@
+       <button type="button" class="mode-btn active" data-mode="operations">Operations</button>
+       <button type="button" class="mode-btn" data-mode="setup">Setup</button>
+     </div>
+-    <div class="topbar-user">Signed in as <strong id="admin-name">Admin</strong></div>
++    <div class="topbar-right">
++      <button type="button" class="topbar-queen" id="topbar-queen" title="Ask Admin Queen">
++        <img src="/assets/artist.jpg" alt="" onerror="this.outerHTML='<span>👑</span>'"/>
++        <span>Ask Queen</span>
++      </button>
++      <div class="topbar-user">Signed in as <strong id="admin-name">Admin</strong></div>
++    </div>
+   </div>
+ 
+   <div class="content" id="ops-content">
+     <div class="page active" id="page-dashboard">
++      <div class="ops-hero" id="ops-hero">
++        <div class="ops-hero-text">
++          <h2>Welcome back, Queen 👑</h2>
++          <p>Tap a pink button — I’ll take you there. Need Setup links? Switch to <strong>Setup</strong> up top, or ask the avatar (bottom-left / Ask Queen).</p>
++        </div>
++        <div class="ops-quick" id="ops-quick">
++          <button type="button" class="ops-quick-btn" data-jump="orders" data-filter="pending">① Pending orders</button>
++          <button type="button" class="ops-quick-btn" data-jump="inquiries">② New messages</button>
++          <button type="button" class="ops-quick-btn" data-jump-mode="setup">③ Finish Setup</button>
++          <button type="button" class="ops-quick-btn" data-guide="winks">④ Winks Studio</button>
++        </div>
++      </div>
+       <div class="stats-grid">
+-        <div class="stat-card pink"><div class="stat-label">Revenue</div><div class="stat-val" id="stat-revenue">$0</div><div class="stat-sub">Paid orders</div></div>
+-        <div class="stat-card"><div class="stat-label">Orders</div><div class="stat-val" id="stat-orders">0</div><div class="stat-sub">All time</div></div>
+-        <div class="stat-card amber"><div class="stat-label">Pending</div><div class="stat-val" id="stat-pending">0</div><div class="stat-sub">Need action</div></div>
+-        <div class="stat-card green"><div class="stat-label">Customers</div><div class="stat-val" id="stat-customers">0</div><div class="stat-sub">Registered</div></div>
+-        <div class="stat-card pink"><div class="stat-label">New Inquiries</div><div class="stat-val" id="stat-inquiries">0</div><div class="stat-sub">Unread</div></div>
+-        <div class="stat-card"><div class="stat-label">Products</div><div class="stat-val" id="stat-products">0</div><div class="stat-sub">Active</div></div>
++        <button type="button" class="stat-card pink clickable-stat" data-jump="orders"><div class="stat-label">Revenue</div><div class="stat-val" id="stat-revenue">$0</div><div class="stat-sub">Paid orders · tap to open</div></button>
++        <button type="button" class="stat-card clickable-stat" data-jump="orders"><div class="stat-label">Orders</div><div class="stat-val" id="stat-orders">0</div><div class="stat-sub">All time · tap to open</div></button>
++        <button type="button" class="stat-card amber clickable-stat" data-jump="orders" data-filter="pending"><div class="stat-label">Pending</div><div class="stat-val" id="stat-pending">0</div><div class="stat-sub">Need action · tap</div></button>
++        <button type="button" class="stat-card green clickable-stat" data-jump="customers"><div class="stat-label">Customers</div><div class="stat-val" id="stat-customers">0</div><div class="stat-sub">Registered · tap</div></button>
++        <button type="button" class="stat-card pink clickable-stat" data-jump="inquiries"><div class="stat-label">New Inquiries</div><div class="stat-val" id="stat-inquiries">0</div><div class="stat-sub">Unread · tap</div></button>
++        <button type="button" class="stat-card clickable-stat" data-jump="products"><div class="stat-label">Products</div><div class="stat-val" id="stat-products">0</div><div class="stat-sub">Active · tap</div></button>
++      </div>
 +      <div class="card" style="margin-bottom:16px">
 +        <div class="card-header">
 +          <span class="card-title">Winks Design Studio</span>
-+          <a class="filter-tab active" href="/shop/" target="_blank" rel="noopener" style="text-decoration:none">Open Studio →</a>
++          <button type="button" class="filter-tab active" data-guide="winks">Show me →</button>
 +        </div>
 +        <p style="font-size:0.88rem;color:var(--text-2);line-height:1.5;padding:4px 0 8px">
-+          Build custom tumblers with the same studio shoppers use. Opens in a new tab so you can design alongside Operations.
++          Build custom tumblers with the same studio shoppers use. Tap <strong>Show me</strong> for an in-admin guide (opens the studio with a checklist).
 +        </p>
-+      </div>
+       </div>
        <div class="card">
          <div class="card-header"><span class="card-title">Recent Orders</span><button type="button" class="filter-tab active" id="dash-view-orders">View All →</button></div>
-         <table><thead><tr><th>Order #</th><th>Customer</th><th>Email</th><th>Total</th><th>Status</th><th>Date</th></tr></thead>
-@@ -405,9 +523,6 @@
+@@ -400,14 +581,13 @@
+     <div class="setup-wrap">
+       <div class="progress-bar" id="wizard-progress"></div>
+       <div class="step-labels" id="wizard-step-labels"></div>
++      <div class="setup-step-jump" id="setup-step-jump" aria-label="Jump to setup step"></div>
+       <div class="wizard-layout">
+         <div class="wizard-main" id="wizard-main"></div>
          <div class="ai-panel">
            <div class="ai-panel-header"><span>👑</span><h3>Setup Coach</h3></div>
            <div class="ai-tip" id="ai-tip"></div>
 -          <div style="margin-top:12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
 -            <span id="coach-llm-status" class="coach-status-pill">Coach loading…</span>
 -          </div>
++          <p class="plain-blurb" style="margin-top:8px">Free guided tips — ask anything in plain English. Tap <strong>Show me</strong> buttons on the left for live walkthroughs.</p>
            <div class="coach-log" id="coach-log" aria-live="polite"></div>
            <form class="coach-form" id="coach-form">
              <textarea id="coach-input" placeholder="Ask anything — e.g. explain Shop ID like I’m five" maxlength="2000"></textarea>
-@@ -501,6 +616,7 @@
+@@ -501,6 +681,8 @@
  
  <div id="toast"></div>
  
-+<script src="queen-nav.js?v=3"></script>
++<script src="guide-browser.js?v=1"></script>
++<script src="queen-nav.js?v=4"></script>
  <script>(function () {
    'use strict';
  
-@@ -508,14 +624,14 @@
+@@ -508,14 +690,14 @@
    const ORDER_STATUSES = ['pending','confirmed','in_progress','shipped','delivered','cancelled'];
    const WIZARD_STEPS = ['Welcome','E-Commerce','Payments','Logins','Email','Products','Admins','Complete'];
    const AI_TIPS = [
@@ -282,11 +731,11 @@ index 3828cc1..6397456 100644
 -    'For Stripe: paste your Connect Client ID + Secret Key, then Save. We’ll open Stripe automatically so you can approve the connection. PayPal is paste-and-Save only.',
 -    'Want shoppers to use Google / Apple / Facebook? Create those apps in your own developer accounts, paste the keys, turn Enable ON, then Save — buttons appear on the shop login right away.',
 -    'Email is optional. Paste your Mailchimp / Klaviyo / SendGrid key and Save when you’re ready for newsletters.',
-+    'Everything happens here. Use the pink Open … buttons on each step, copy your keys, paste, then Save — the shop updates by itself.',
-+    'Etsy / Amazon / TikTok are optional. Tap Open Etsy Developers (etc.) for links + steps, or leave blank and Continue.',
-+    'Tap Open Stripe API keys, copy pk_ and sk_, paste, Save. PayPal has its own Open button if you want it too.',
-+    'Google is easiest: Open Google Credentials, add the redirect URI we show, paste keys, Enable ON, Save.',
-+    'Email is optional. Open Mailchimp API keys if you want newsletters — or Continue to skip.',
++    'Everything happens here. Tap pink Show me buttons — I open the site + a checklist. Copy, paste, Save.',
++    'Etsy / Amazon / TikTok are optional. Tap Show me for a guided checklist, or leave blank and Continue.',
++    'Tap Show me Stripe keys, copy pk_ and sk_, paste, Save. PayPal has its own Show me if you want it.',
++    'Google is easiest: Show me Google, add the redirect URI we show, paste keys, Enable ON, Save.',
++    'Email is optional. Show me Mailchimp if you want newsletters — or Continue to skip.',
      'Adjust prices or inventory if you want — Save on each row. Or Continue to skip.',
      'You can add another admin later. Continue when you’re ready.',
 -    'Setup is finished. Operations is your daily dashboard for orders and messages. You can reopen Setup anytime to change keys.'
@@ -294,7 +743,7 @@ index 3828cc1..6397456 100644
    ];
    const STEP_INDEX = { welcome: 0, ecommerce: 1, payments: 2, logins: 3, email: 4, products: 5, admins: 6, complete: 7 };
  
-@@ -623,6 +739,7 @@
+@@ -623,6 +805,7 @@
      hide($('login-screen'));
      show($('main-app'));
      document.body.classList.add('authed');
@@ -302,7 +751,7 @@ index 3828cc1..6397456 100644
      if (consumeSetupQuery()) return;
      try {
        await loadIntegrations();
-@@ -665,6 +782,9 @@
+@@ -665,6 +848,9 @@
    });
  
    // ── Mode toggle ─────────────────────────────────────────────
@@ -312,7 +761,7 @@ index 3828cc1..6397456 100644
    function setMode(mode) {
      currentMode = mode;
      document.querySelectorAll('.mode-btn').forEach(b => b.classList.toggle('active', b.dataset.mode === mode));
-@@ -675,6 +795,11 @@
+@@ -675,6 +861,11 @@
        show($('setup-content'));
        sidebar.classList.add('hidden');
        main.classList.add('setup-mode');
@@ -324,7 +773,7 @@ index 3828cc1..6397456 100644
        loadIntegrations().then(() => renderWizard()).catch(() => renderWizard());
      } else {
        show($('ops-content'));
-@@ -686,6 +811,60 @@
+@@ -686,10 +877,120 @@
      closeSidebar();
    }
  
@@ -382,11 +831,86 @@ index 3828cc1..6397456 100644
 +    });
 +  }
 +
++  function openGuide(id) {
++    if (window.QCCGuideBrowser && typeof window.QCCGuideBrowser.open === 'function') {
++      window.QCCGuideBrowser.open(id);
++      return;
++    }
++    toast('Guide browser loading…', 'error');
++  }
++
++  function wireGuideButtons(root) {
++    (root || document).querySelectorAll('[data-guide]').forEach((btn) => {
++      if (btn.dataset.guideBound) return;
++      btn.dataset.guideBound = '1';
++      btn.addEventListener('click', (e) => {
++        e.preventDefault();
++        openGuide(btn.getAttribute('data-guide'));
++      });
++    });
++  }
++
++  function jumpOps(page, filter) {
++    setMode('operations');
++    if (filter && page === 'orders') {
++      currentOrderFilter = filter;
++      document.querySelectorAll('#order-filters .filter-tab').forEach((t) => {
++        t.classList.toggle('active', t.dataset.status === filter);
++      });
++    }
++    showPage(page || 'dashboard');
++  }
++
    document.querySelectorAll('.mode-btn').forEach(btn => {
      btn.addEventListener('click', () => setMode(btn.dataset.mode));
    });
-@@ -981,25 +1160,7 @@
+ 
++  $('topbar-queen') && $('topbar-queen').addEventListener('click', () => {
++    if (window.QCCAdminQueen && typeof window.QCCAdminQueen.open === 'function') {
++      window.QCCAdminQueen.open();
++    } else {
++      initAdminQueenNav();
++      setTimeout(() => window.QCCAdminQueen && window.QCCAdminQueen.open && window.QCCAdminQueen.open(), 50);
++    }
++  });
++
++  document.addEventListener('click', (e) => {
++    const jump = e.target.closest('[data-jump]');
++    if (jump) {
++      jumpOps(jump.getAttribute('data-jump'), jump.getAttribute('data-filter') || null);
++      return;
++    }
++    const modeBtn = e.target.closest('[data-jump-mode]');
++    if (modeBtn) {
++      setMode(modeBtn.getAttribute('data-jump-mode'));
++      return;
++    }
++    const guideBtn = e.target.closest('[data-guide]');
++    if (guideBtn && !guideBtn.dataset.guideBound) {
++      openGuide(guideBtn.getAttribute('data-guide'));
++    }
++  });
++
+   // ── Navigation ────────────────────────────────────────────────
+   const PAGE_TITLES = { dashboard:'Dashboard', orders:'Orders', customers:'Customers', inquiries:'Inquiries', products:'Products', 'admin-users':'Admin Users' };
+ 
+@@ -979,27 +1280,22 @@
+     bar.innerHTML = WIZARD_STEPS.map((_, i) => '<div class="progress-step' + (i < wizardStep ? ' done' : '') + (i === wizardStep ? ' current' : '') + '"></div>').join('');
+     labels.innerHTML = WIZARD_STEPS.map((s, i) => '<span>' + s + '</span>').join('');
      $('ai-tip').textContent = AI_TIPS[wizardStep] || '';
++    const jump = $('setup-step-jump');
++    if (jump) {
++      jump.innerHTML = WIZARD_STEPS.map((label, i) => {
++        const cls = i === wizardStep ? 'current' : (i < wizardStep ? 'done' : '');
++        return '<button type="button" class="' + cls + '" data-wiz-jump="' + i + '">' + (i < wizardStep ? '✓ ' : (i + 1) + '. ') + label + '</button>';
++      }).join('');
++      jump.querySelectorAll('[data-wiz-jump]').forEach((btn) => {
++        btn.addEventListener('click', () => {
++          wizardStep = parseInt(btn.getAttribute('data-wiz-jump'), 10) || 0;
++          renderWizard();
++        });
++      });
++    }
      const side = $('setup-status-panel');
      if (side) side.innerHTML = '<p style="font-size:0.75rem;color:var(--text-3);margin-bottom:8px;text-transform:uppercase;letter-spacing:0.06em">Live on your shop</p>' + statusChecklistHtml();
 -    refreshCoachStatus();
@@ -412,7 +936,35 @@ index 3828cc1..6397456 100644
    }
  
    function appendCoachBubble(text, who) {
-@@ -1092,10 +1253,34 @@
+@@ -1078,24 +1374,65 @@
+ 
+     if (wizardStep === 0) {
+       html = '<h2>Welcome, Queen! 👑</h2>' +
+-        '<p class="lead">This Setup guide runs entirely in your browser. You’ll open Stripe / Google (etc.) in a new tab, copy your keys, paste them here, and tap <strong>Save</strong>. When you Save, we activate the connection automatically — no terminal, no code, no tech person required.</p>' +
++        '<p class="lead">I’ll walk you through Setup with pink <strong>Show me</strong> buttons. Each one opens a checklist + the website you need (in a guide window). Copy → paste → <strong>Save</strong>. No terminal, no code.</p>' +
+         '<div class="howto"><h3>How every step works</h3><ol>' +
+-        '<li>We tell you which website to open (Stripe, Google, PayPal…).</li>' +
+-        '<li>You copy the key from <em>your</em> account (never someone else’s).</li>' +
+-        '<li>Paste it in the boxes on this page.</li>' +
+-        '<li>Tap <strong>Save &amp; Continue</strong> — we store it and turn it on for queenscustoms.shop.</li>' +
+-        '<li>For Stripe Connect, Save also opens Stripe so you can click Approve.</li>' +
++        '<li>Tap <strong>Show me</strong> — I open the right site and a checklist.</li>' +
++        '<li>Check off each box as you finish it.</li>' +
++        '<li>Paste keys into the boxes on this page.</li>' +
++        '<li>Tap <strong>Save &amp; Continue</strong> — we turn it on for queenscustoms.shop.</li>' +
++        '<li>Stuck? Tap <strong>Ask Queen</strong> (top) or the pink avatar (bottom-left).</li>' +
+         '</ol></div>' +
++        '<div class="howto"><h3>Links you’ll use (tap Show me anytime)</h3>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="stripe_keys">Show me Stripe keys</button>' +
++        '<button type="button" class="btn-show-guide" data-guide="paypal">Show me PayPal</button>' +
++        '<button type="button" class="btn-show-guide" data-guide="google">Show me Google login</button>' +
++        '<button type="button" class="btn-show-guide" data-guide="mailchimp">Show me Mailchimp</button>' +
++        '<button type="button" class="btn-show-guide" data-guide="winks">Show me Winks Studio</button>' +
++        '</div></div>' +
+         statusChecklistHtml() +
+         '<div class="wizard-nav"><span></span><button type="button" class="btn-pink" id="wiz-next">Start Setup →</button></div>';
+     } else if (wizardStep === 1) {
        const e = integrations.etsy || {};
        const a = integrations.amazon || {};
        const t = integrations.tiktokShop || {};
@@ -432,26 +984,35 @@ index 3828cc1..6397456 100644
 +        '<div class="integration-grid">' +
 +        '<div class="integration-block"><h4><span class="connected-dot' + (e.connected ? ' on' : '') + '"></span> Etsy</h4>' +
 +        '<p class="plain-blurb"><strong>API Key</strong> = secret from Etsy Developers. <strong>Shop ID</strong> = your shop’s number (not your password).</p>' +
-+        '<a class="btn-open-site" href="https://www.etsy.com/developers/your-apps" target="_blank" rel="noopener">↗ Open Etsy Developers</a>' +
-+        '<button type="button" class="btn-ask-coach" data-ask="Where do I find my Etsy API Key and Shop ID? Explain simply.">Ask Coach about Etsy</button>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="etsy">Show me Etsy</button>' +
++        '<a class="btn-open-site" href="https://www.etsy.com/developers/your-apps" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Where do I find my Etsy API Key and Shop ID? Explain simply.">Ask Coach</button>' +
++        '</div>' +
 +        field('API Key', 'wiz-etsy-key', e.apiKey) + field('Shop ID', 'wiz-etsy-shop', e.shopId) +
 +        '</div>' +
 +        '<div class="integration-block"><h4><span class="connected-dot' + (a.connected ? ' on' : '') + '"></span> Amazon</h4>' +
 +        '<p class="plain-blurb">Only if you sell on Amazon. <strong>Seller ID</strong> is in Seller Central → Settings. Skip if you don’t have Amazon.</p>' +
-+        '<a class="btn-open-site" href="https://sellercentral.amazon.com/" target="_blank" rel="noopener">↗ Open Amazon Seller Central</a>' +
-+        '<button type="button" class="btn-ask-coach" data-ask="I don’t sell on Amazon — can I skip? What is an MWS token?">Ask Coach about Amazon</button>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="amazon">Show me Amazon</button>' +
++        '<a class="btn-open-site" href="https://sellercentral.amazon.com/" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="I don’t sell on Amazon — can I skip? What is an MWS token?">Ask Coach</button>' +
++        '</div>' +
 +        field('Seller ID', 'wiz-amz-seller', a.sellerId) + field('MWS Token', 'wiz-amz-token', a.mwsToken) +
 +        '</div>' +
 +        '<div class="integration-block"><h4><span class="connected-dot' + (t.connected ? ' on' : '') + '"></span> TikTok Shop</h4>' +
 +        '<p class="plain-blurb"><strong>App Key</strong> + <strong>App Secret</strong> are two passwords from TikTok Shop Partner Center. Skip if you’re not on TikTok Shop.</p>' +
-+        '<a class="btn-open-site" href="https://partner.tiktokshop.com/" target="_blank" rel="noopener">↗ Open TikTok Shop Partner</a>' +
-+        '<button type="button" class="btn-ask-coach" data-ask="How do I get TikTok Shop App Key and App Secret? Can I skip?">Ask Coach about TikTok</button>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="tiktok">Show me TikTok</button>' +
++        '<a class="btn-open-site" href="https://partner.tiktokshop.com/" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="How do I get TikTok Shop App Key and App Secret? Can I skip?">Ask Coach</button>' +
++        '</div>' +
 +        field('App Key', 'wiz-tiktok-key', t.appKey) + field('App Secret', 'wiz-tiktok-secret', t.appSecret) +
 +        '</div>' +
          '</div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
      } else if (wizardStep === 2) {
        const s = integrations.stripe || {};
-@@ -1103,32 +1288,38 @@
+@@ -1103,32 +1440,44 @@
        const stripeOn = !!(s.connected || s.stripeUserId);
        html = '<h2>Payments</h2>' +
          '<div id="wiz-save-banner" class="save-banner"></div>' +
@@ -463,7 +1024,7 @@ index 3828cc1..6397456 100644
 -        '<li>Paste below → tap <strong>Save &amp; Continue</strong>. If Connect is ready, Stripe opens so you can Approve — then you’re done.</li>' +
 +        '<p class="lead">This is how customers pay you. Start with <strong>Stripe</strong> (cards). PayPal is optional. Tap the pink Open buttons — we’ll tell you exactly what to copy.</p>' +
 +        '<div class="howto"><h3>Stripe (recommended) — plain English</h3><ol>' +
-+        '<li>Tap <strong>Open Stripe API keys</strong> below (or <a href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">this link</a>) and sign in.</li>' +
++        '<li>Tap <strong>Show me Stripe keys</strong> — checklist + site open together.</li>' +
 +        '<li>Copy the key starting with <strong>pk_</strong> → Publishable Key.</li>' +
 +        '<li>Copy the key starting with <strong>sk_</strong> → Secret Key (keep private).</li>' +
 +        '<li>Optional: Settings → Connect → copy <strong>ca_</strong> client ID.</li>' +
@@ -473,9 +1034,12 @@ index 3828cc1..6397456 100644
          '<div class="integration-block"><h4><span class="connected-dot' + (stripeOn ? ' on' : '') + '"></span> Stripe' +
          (stripeOn ? ' <span class="connect-status">Connected' + (s.stripeUserId ? ' · ' + esc(s.stripeUserId) : '') + '</span>' : ' <span class="connect-status off">Not connected yet</span>') +
          '</h4>' +
-+        '<a class="btn-open-site" href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">↗ Open Stripe API keys</a>' +
-+        '<a class="btn-open-site" href="https://dashboard.stripe.com/register" target="_blank" rel="noopener">↗ Create Stripe account</a>' +
-+        '<button type="button" class="btn-ask-coach" data-ask="Explain Stripe keys like I’m five. What do I paste where?">Ask Coach about Stripe</button>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="stripe_keys">Show me Stripe keys</button>' +
++        '<button type="button" class="btn-show-guide" data-guide="stripe_register">Show me create Stripe</button>' +
++        '<a class="btn-open-site" href="https://dashboard.stripe.com/apikeys" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Explain Stripe keys like I’m five. What do I paste where?">Ask Coach</button>' +
++        '</div>' +
          '<div class="connect-actions">' +
          '<button type="button" class="btn-connect stripe" id="wiz-stripe-connect">🔗 Connect with Stripe now</button>' +
          (s.stripeUserId ? '<button type="button" class="btn-ghost" id="wiz-stripe-disconnect">Disconnect</button>' : '') +
@@ -492,16 +1056,19 @@ index 3828cc1..6397456 100644
 -        '<li>Open <a href="https://developer.paypal.com/dashboard/applications" target="_blank" rel="noopener">PayPal Developer</a>.</li>' +
 -        '<li>Create (or open) your Live app → copy Client ID &amp; Secret.</li>' +
 -        '<li>Paste below → Save. Checkout picks them up automatically.</li>' +
-+        '<li>Tap <strong>Open PayPal Developer</strong> (not only paypal.com).</li>' +
++        '<li>Tap <strong>Show me PayPal</strong> (not only paypal.com).</li>' +
 +        '<li>Apps &amp; Credentials → create a <strong>Live</strong> app.</li>' +
 +        '<li>Copy Client ID + Secret → paste → Save.</li>' +
          '</ol></div>' +
-+        '<a class="btn-open-site" href="https://developer.paypal.com/dashboard/applications" target="_blank" rel="noopener">↗ Open PayPal Developer</a>' +
-+        '<button type="button" class="btn-ask-coach" data-ask="Do I need PayPal if I already have Stripe?">Ask Coach about PayPal</button>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="paypal">Show me PayPal</button>' +
++        '<a class="btn-open-site" href="https://developer.paypal.com/dashboard/applications" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Do I need PayPal if I already have Stripe?">Ask Coach</button>' +
++        '</div>' +
          field('Client ID', 'wiz-paypal-id', p.clientId) + field('Client Secret', 'wiz-paypal-secret', p.clientSecret) +
          '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
      } else if (wizardStep === 3) {
-@@ -1138,20 +1329,23 @@
+@@ -1138,20 +1487,29 @@
        const f = sa.facebook || {};
        html = '<h2>Shopper Logins</h2>' +
          '<div id="wiz-save-banner" class="save-banner"></div>' +
@@ -520,23 +1087,32 @@ index 3828cc1..6397456 100644
          '</ol></div>' +
          '<div class="integration-grid">' +
          '<div class="integration-block"><h4><span class="connected-dot' + (g.enabled && g.clientId ? ' on' : '') + '"></span> Google</h4>' +
-+        '<a class="btn-open-site" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">↗ Open Google Credentials</a>' +
-+        '<button type="button" class="btn-ask-coach" data-ask="Walk me through Google Sign-In setup simply.">Ask Coach about Google</button>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="google">Show me Google</button>' +
++        '<a class="btn-open-site" href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Walk me through Google Sign-In setup simply.">Ask Coach</button>' +
++        '</div>' +
          '<div class="toggle-row"><label for="wiz-google-on">Enable Google Sign-In on the shop</label><input type="checkbox" id="wiz-google-on"' + (g.enabled ? ' checked' : '') + '/></div>' +
          field('Client ID', 'wiz-google-id', g.clientId) + field('Client Secret', 'wiz-google-secret', g.clientSecret) +
          '</div>' +
          '<div class="integration-block"><h4><span class="connected-dot' + (a.enabled && a.clientId ? ' on' : '') + '"></span> Apple</h4>' +
 -        '<p class="connect-note">Apple Developer → Services ID + Key (.p8). Return URL: <code>https://queenscustoms.shop/api/auth/apple/callback</code></p>' +
 +        '<p class="connect-note">Needs a paid Apple Developer account. Skip unless you want the Apple button. Return URL: <code>https://queenscustoms.shop/api/auth/apple/callback</code></p>' +
-+        '<a class="btn-open-site" href="https://developer.apple.com/account/resources/identifiers/list" target="_blank" rel="noopener">↗ Open Apple Developer</a>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="apple">Show me Apple</button>' +
++        '<a class="btn-open-site" href="https://developer.apple.com/account/resources/identifiers/list" target="_blank" rel="noopener">↗ New tab</a>' +
++        '</div>' +
          '<div class="toggle-row"><label for="wiz-apple-on">Enable Apple Sign-In on the shop</label><input type="checkbox" id="wiz-apple-on"' + (a.enabled ? ' checked' : '') + '/></div>' +
          field('Services ID (Client ID)', 'wiz-apple-id', a.clientId) +
          field('Team ID', 'wiz-apple-team', a.teamId) +
-@@ -1160,14 +1354,24 @@
+@@ -1160,14 +1518,30 @@
          '</div>' +
          '<div class="integration-block"><h4><span class="connected-dot' + (f.enabled && (f.appId || f.clientId) ? ' on' : '') + '"></span> Facebook</h4>' +
          '<p class="connect-note">Meta for Developers → Facebook Login. Redirect: <code>https://queenscustoms.shop/api/auth/facebook/callback</code></p>' +
-+        '<a class="btn-open-site" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">↗ Open Meta for Developers</a>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="facebook">Show me Facebook</button>' +
++        '<a class="btn-open-site" href="https://developers.facebook.com/apps/" target="_blank" rel="noopener">↗ New tab</a>' +
++        '</div>' +
          '<div class="toggle-row"><label for="wiz-fb-on">Enable Facebook Sign-In on the shop</label><input type="checkbox" id="wiz-fb-on"' + (f.enabled ? ' checked' : '') + '/></div>' +
          field('App ID', 'wiz-fb-id', f.appId || f.clientId) + field('App Secret', 'wiz-fb-secret', f.appSecret || f.clientSecret) +
          '</div></div><div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Activate →</button></div>';
@@ -546,13 +1122,16 @@ index 3828cc1..6397456 100644
 +      html = '<h2>Email Marketing</h2>' +
 +        '<p class="lead"><strong>Optional.</strong> Only if you want newsletters. Mailchimp is easiest for beginners.</p>' +
 +        '<div class="howto"><h3>Mailchimp (recommended if new)</h3><ol>' +
-+        '<li>Tap <strong>Open Mailchimp API keys</strong>.</li>' +
++        '<li>Tap <strong>Show me Mailchimp</strong>.</li>' +
 +        '<li>Create a key → copy it into API Key below.</li>' +
 +        '<li>List / Audience ID is which mailing list new signups join.</li>' +
 +        '<li>Or skip — Continue with empty boxes.</li>' +
 +        '</ol></div>' +
-+        '<a class="btn-open-site" href="https://admin.mailchimp.com/account/api/" target="_blank" rel="noopener">↗ Open Mailchimp API keys</a>' +
-+        '<button type="button" class="btn-ask-coach" data-ask="Do I need email marketing now? What is a List ID?">Ask Coach about email</button>' +
++        '<div class="link-row">' +
++        '<button type="button" class="btn-show-guide" data-guide="mailchimp">Show me Mailchimp</button>' +
++        '<a class="btn-open-site" href="https://admin.mailchimp.com/account/api/" target="_blank" rel="noopener">↗ New tab</a>' +
++        '<button type="button" class="btn-ask-coach" data-ask="Do I need email marketing now? What is a List ID?">Ask Coach</button>' +
++        '</div>' +
 +        '<div class="form-field"><label>Provider</label><select id="wiz-email-provider"><option value="mailchimp">Mailchimp (easiest)</option><option value="klaviyo">Klaviyo</option><option value="sendgrid">SendGrid</option></select></div>' +
          field('API Key', 'wiz-email-key', em.apiKey) +
 -        '<div id="wiz-list-field" class="form-field"><label>List ID</label><input type="text" id="wiz-email-list" value="' + escAttr(em.listId || '') + '"/></div>' +
@@ -560,10 +1139,12 @@ index 3828cc1..6397456 100644
          '<div class="wizard-nav"><button type="button" class="btn-ghost" id="wiz-back">← Back</button><button type="button" class="btn-pink" id="wiz-save-step">Save & Continue →</button></div>';
      } else if (wizardStep === 5) {
        const data = await api('/api/admin/products');
-@@ -1190,6 +1394,27 @@
+@@ -1189,6 +1563,28 @@
+     }
  
      main.innerHTML = html;
- 
++    wireGuideButtons(main);
++
 +    // Open-site / Ask Coach helpers on guided steps
 +    document.querySelectorAll('[data-ask]').forEach(btn => {
 +      btn.addEventListener('click', () => {
@@ -584,16 +1165,15 @@ index 3828cc1..6397456 100644
 +        }
 +      });
 +    });
-+
+ 
      const lastStep = WIZARD_STEPS.length - 1;
      const back = $('wiz-back');
-     if (back) back.addEventListener('click', () => { wizardStep = Math.max(0, wizardStep - 1); renderWizard(); });
 diff --git a/admin/queen-nav.js b/admin/queen-nav.js
 new file mode 100644
-index 0000000..2a8f67d
+index 0000000..fee61b0
 --- /dev/null
 +++ b/admin/queen-nav.js
-@@ -0,0 +1,388 @@
+@@ -0,0 +1,451 @@
 +/**
 + * Admin Queen Navigator — find / jump around Operations + Setup.
 + * Initialized from admin/index.html via QCCAdminQueen.init(bridge).
@@ -876,9 +1456,72 @@ index 0000000..2a8f67d
 +    );
 +  }
 +
++  function injectCriticalCss() {
++    if (document.getElementById('aq-nav-critical-css')) return;
++    const style = document.createElement('style');
++    style.id = 'aq-nav-critical-css';
++    style.textContent = `
++      body:not(.authed) #aq-nav { display: none !important; }
++      #aq-nav.aq-nav {
++        position: fixed !important; bottom: 24px !important; left: 18px !important;
++        z-index: 13000 !important; pointer-events: none !important;
++      }
++      #aq-nav .aq-fab, #aq-nav .aq-panel, #aq-nav .aq-tip { pointer-events: auto !important; }
++      #aq-nav .aq-fab {
++        width: 64px !important; height: 64px !important; border-radius: 50% !important;
++        border: 3px solid #FF1A8C !important; background: #1a0a12 !important; padding: 0 !important;
++        cursor: pointer !important; position: relative !important; overflow: hidden !important;
++        display: grid !important; place-items: center !important; color: #fff !important;
++        box-shadow: 0 8px 28px rgba(255,26,140,0.55), 0 0 0 4px rgba(255,26,140,0.2) !important;
++        font-size: 1.6rem !important;
++      }
++      #aq-nav .aq-fab img {
++        width: 100% !important; height: 100% !important; object-fit: cover !important;
++        object-position: center top !important; border-radius: 50% !important; display: block !important;
++      }
++      #aq-nav .aq-fab-pulse {
++        position: absolute !important; inset: -5px !important; border-radius: 50% !important;
++        border: 2px solid rgba(255,26,140,0.55) !important; pointer-events: none !important;
++        animation: aq-pulse 2.2s ease-out infinite !important;
++      }
++      @keyframes aq-pulse {
++        0% { transform: scale(0.95); opacity: 0.75; }
++        100% { transform: scale(1.35); opacity: 0; }
++      }
++      #aq-nav .aq-tip {
++        position: absolute !important; left: 74px !important; bottom: 16px !important;
++        white-space: nowrap !important; background: #1c1c22 !important; color: #fff !important;
++        border: 1px solid rgba(255,26,140,0.45) !important; border-radius: 999px !important;
++        padding: 8px 12px !important; font-size: 0.78rem !important; font-weight: 600 !important;
++        opacity: 0; transition: opacity 0.25s;
++      }
++      #aq-nav:not(.open) .aq-tip.show { opacity: 1 !important; }
++      #aq-nav .aq-panel {
++        position: absolute !important; bottom: 78px !important; left: 0 !important;
++        width: min(340px, calc(100vw - 28px)) !important;
++        height: min(420px, calc(100vh - 160px)) !important;
++        background: #141418 !important; border: 1px solid rgba(255,26,140,0.4) !important;
++        border-radius: 16px !important; overflow: hidden !important;
++        display: none !important; flex-direction: column !important;
++        box-shadow: 0 16px 48px rgba(0,0,0,0.55) !important;
++      }
++      #aq-nav.open .aq-panel { display: flex !important; }
++      @media (max-width: 768px) {
++        #aq-nav.aq-nav { bottom: max(88px, env(safe-area-inset-bottom, 0px) + 72px) !important; left: 12px !important; }
++        #aq-nav .aq-tip { display: none !important; }
++        #aq-nav .aq-fab { width: 58px !important; height: 58px !important; }
++      }
++    `;
++    document.head.appendChild(style);
++  }
++
 +  function init(b) {
 +    bridge = b;
-+    if (document.getElementById('aq-nav')) return;
++    injectCriticalCss();
++    if (document.getElementById('aq-nav')) {
++      document.getElementById('aq-nav').style.display = '';
++      return;
++    }
 +
 +    const root = el(`
 +<div class="aq-nav" id="aq-nav" aria-live="polite">
@@ -1428,7 +2071,7 @@ index 9c61326..2b173f1 100644
      } finally {
        sendBtn.disabled = false;
 diff --git a/server.js b/server.js
-index 738fa8e..f857a64 100644
+index 738fa8e..f610451 100644
 --- a/server.js
 +++ b/server.js
 @@ -366,6 +366,23 @@ app.post('/api/inquiries', (req, res) => {
@@ -1455,11 +2098,20 @@ index 738fa8e..f857a64 100644
  // ── Admin: Products ───────────────────────────────────────────────────────────
  
  app.get('/api/admin/products', adminMiddleware, (req, res) => {
-@@ -676,7 +693,11 @@ app.get('/shop/',         (req, res) => res.sendFile(path.join(__dirname, 'shop/
+@@ -676,7 +693,20 @@ app.get('/shop/',         (req, res) => res.sendFile(path.join(__dirname, 'shop/
  app.get('/order-success', (req, res) => res.sendFile(path.join(__dirname, 'order-success.html')));
  app.get('/order-cancel',  (req, res) => res.sendFile(path.join(__dirname, 'order-cancel.html')));
  app.get('/admin',         (req, res) => res.sendFile(path.join(__dirname, 'admin/index.html')));
 -app.get('/admin/*',       (req, res) => res.sendFile(path.join(__dirname, 'admin/index.html')));
++// Explicit admin JS assets (must never fall through to SPA HTML)
++app.get('/admin/queen-nav.js', (req, res) => {
++  res.type('application/javascript');
++  res.sendFile(path.join(__dirname, 'admin/queen-nav.js'));
++});
++app.get('/admin/guide-browser.js', (req, res) => {
++  res.type('application/javascript');
++  res.sendFile(path.join(__dirname, 'admin/guide-browser.js'));
++});
 +// SPA fallback for admin — never swallow real static assets (queen-nav.js, etc.)
 +app.get('/admin/*', (req, res, next) => {
 +  if (/\.(js|css|map|png|jpe?g|webp|gif|svg|ico|woff2?)$/i.test(req.path)) return next();
