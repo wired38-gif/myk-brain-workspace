@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
+    "test": "node myks-app/scripts/test-session-export.js && node admin/test-open-guard.js",
     "seed": "node admin/seed.js",
     "tunnel": "cloudflared tunnel run --token eyJhIjoiMzRhOGU1Yjk0NzJlYzdmZjNiMzUzNmU2YmE0MWU1NTAiLCJ0IjoiMGQ1MmQ4ZTktOGE2ZS00MTE2LWI4OTQtMDA4ZTIxZDYyZjJkIiwicyI6Ik9HSXlNMll3T0dFdFpXTTVOeTAwTmpVM0xXRmhPVGt0TkdGbVltSTBaakpoTTJaaiJ9",
     "start-with-tunnel": "node server.js & npm run tunnel"

@@ -26,6 +26,7 @@ try {
 // Admin portal bootstrap: seed master admin on first run
 const { seedMasterAdmin } = require('./admin/seed');
 const { adminRouter } = require('./admin/index');
+const { isBlockedOpenUrl, shouldSkipBrowserOpen } = require('./admin/openGuard');
 seedMasterAdmin().catch(err => console.error('[SEED] Error:', err.message));
 
 const PORT = process.env.PORT || 3000;
@@ -72,9 +73,19 @@ const server = http.createServer(async (req, res) => {
             try {
                 const payload = JSON.parse(body);
                 const { app, url } = payload;
+                const targetUrl = url || `http://localhost:${PORT}`;
+                if (isBlockedOpenUrl(targetUrl)) {
+                    console.warn(`[MAC] Blocked open request for ${targetUrl}`);
+                    res.writeHead(403, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({
+                        success: false,
+                        error: 'Blocked: Mixpanel and other analytics dashboards are not opened from this workspace'
+                    }));
+                    return;
+                }
                 console.log(`[MAC] Opening app: ${app}`);
-                
-                exec(`open -a "${app}" "${url || 'http://localhost:3000'}"`, (error) => {
+
+                exec(`open -a "${app}" "${targetUrl}"`, (error) => {
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     if (error) {
                         res.end(JSON.stringify({ success: false, error: error.message }));
@@ -240,5 +251,9 @@ server.listen(PORT, () => {
     console.log(`📱 Mac Connector:    /api/status, /api/open, /api/terminal active`);
     console.log('========================================================================================\n');
     console.log('Press Ctrl+C to terminate server.');
-    try { require('child_process').exec(`open http://localhost:${PORT}`); } catch (e) {}
+    if (shouldSkipBrowserOpen()) {
+        console.log('Browser auto-open skipped (cloud/CI/non-macOS, or SKIP_BROWSER_OPEN).');
+    } else {
+        try { require('child_process').exec(`open http://localhost:${PORT}`); } catch (e) {}
+    }
 });
