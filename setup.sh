@@ -247,7 +247,7 @@ server.listen(PORT, () => {
     console.log(`🔒 Security Shield:  Local CORS proxy middleware active on /api/proxy`);
     console.log('========================================================================================\n');
     console.log('Press Ctrl+C to terminate server.');
-    try { require('child_process').exec(`open http://localhost:${PORT}`); } catch (e) {}
+    console.log('Browser auto-open disabled. Use http://localhost:' + PORT);
 });
 SERVER_EOF
 echo -e "${COLOR_GREEN}✔ Integrated server.js${COLOR_RESET}"
