@@ -13,6 +13,7 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { isBlockedOpenRequest, blockedOpenMessage } = require('../../admin/openGuard');
 
 const PORT = 3000;
 
@@ -113,23 +114,25 @@ const server = http.createServer((req, res) => {
                 const payload = JSON.parse(body);
                 const { app, url } = payload;
                 const { exec } = require('child_process');
-                
+                const targetUrl = url || 'http://localhost:3000';
+                if (isBlockedOpenRequest({ app, url: targetUrl })) {
+                    res.writeHead(403, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: blockedOpenMessage() }));
+                    return;
+                }
+
                 let cmd = '';
                 if (process.platform === 'darwin') {
-                    if (app === 'chrome') {
-                        cmd = `open -a "Google Chrome" "${url || 'http://localhost:3000'}"`;
-                    } else if (app === 'terminal') {
+                    if (app === 'terminal') {
                         cmd = `open -a Terminal .`;
                     } else {
-                        cmd = `open "${url || '.'}"`;
+                        cmd = `open "${targetUrl}"`;
                     }
                 } else {
-                    if (app === 'chrome') {
-                        cmd = `start chrome "${url || 'http://localhost:3000'}"`;
-                    } else if (app === 'terminal') {
+                    if (app === 'terminal') {
                         cmd = `start cmd .`;
                     } else {
-                        cmd = `start "${url || '.'}"`;
+                        cmd = `start "${targetUrl}"`;
                     }
                 }
 
@@ -160,9 +163,14 @@ const server = http.createServer((req, res) => {
                 const payload = JSON.parse(body);
                 const { command } = payload;
                 const { exec } = require('child_process');
-                
+                if (isBlockedOpenRequest({ command })) {
+                    res.writeHead(403, { 'Content-Type': 'application/json' });
+                    res.end(JSON.stringify({ success: false, error: blockedOpenMessage() }));
+                    return;
+                }
+
                 console.log(`[MAC ENGINE] Terminal Command execution trigger: ${command}`);
-                
+
                 exec(command, { cwd: __dirname }, (error, stdout, stderr) => {
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({
@@ -231,12 +239,5 @@ server.listen(PORT, () => {
     console.log(`🔒 Secure Proxy:   Server-side payload bypass active on /api/proxy`);
     console.log('===================================================================================\n');
     console.log('Press Ctrl+C to terminate local server.');
-    
-    // Auto-open browser on Mac
-    try {
-        const { exec } = require('child_process');
-        exec(`open http://localhost:${PORT}`);
-    } catch (e) {
-        // Suppress if auto-open fails due to terminal environments
-    }
+    console.log(`Browser auto-open disabled. Use http://localhost:${PORT}`);
 });

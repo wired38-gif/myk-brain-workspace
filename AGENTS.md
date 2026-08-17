@@ -6,10 +6,11 @@ Do **not** open Mixpanel. This workspace has no Mixpanel integration.
 
 - Do not visit `mixpanel.com`, `*.mixpanel.com`, `mxpnl.com`, or any Mixpanel dashboard.
 - Do not use computerUse, Chrome, `open`, `xdg-open`, or `/api/open` to launch Mixpanel.
+- Do not launch Chrome/Safari at all from this repo — macOS restores Mixpanel tabs.
 - Do not treat Mixpanel as a test target, analytics check, or login step.
 - If a browser is already on Mixpanel, close that tab and stay on the local app (`http://localhost:3000`) or use `curl`.
 
-`/api/open` rejects Mixpanel URLs. Server startup does not auto-open a browser in cloud, CI, Linux, or when `SKIP_BROWSER_OPEN=1`.
+Server startup never auto-opens a browser. `/api/open` rejects browser apps and Mixpanel URLs. `/api/terminal` rejects `open http…` and Mixpanel commands.
 
 ## Cursor Cloud specific instructions
 
@@ -19,7 +20,7 @@ Do **not** open Mixpanel. This workspace has no Mixpanel integration.
 - **`Myks-Brain-main/`** — Android / AI-Studio app. Not runnable in this headless cloud VM.
 
 ### Running / building / testing
-- **Run the main server:** `SKIP_BROWSER_OPEN=1 node server.js` (or `npm start`) from the repo root → `http://localhost:3000`. Verify with `curl -s localhost:3000/api/status`.
+- **Run the main server:** `node server.js` (or `npm start`) from the repo root → `http://localhost:3000`. It will **not** open a browser. Verify with `curl -s localhost:3000/api/status`.
 - **Tests:** `node myks-app/scripts/test-session-export.js` and `node admin/test-open-guard.js`.
 - **Lint:** no linter/formatter is configured.
 

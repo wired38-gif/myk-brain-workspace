@@ -304,16 +304,20 @@ const server = http.createServer((req, res) => {
                 
                 let cmd = '';
                 if (process.platform === 'darwin') {
-                    if (app === 'chrome') {
-                        cmd = `open -a "Google Chrome" "${url || 'http://localhost:3000'}"`;
+                    if (app === 'chrome' || /mixpanel|mxpnl/i.test(String(url || '') + String(app || ''))) {
+                        res.writeHead(403, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: 'Blocked: do not open Mixpanel or Chrome' }));
+                        return;
                     } else if (app === 'terminal') {
                         cmd = `open -a Terminal .`;
                     } else {
                         cmd = `open "${url || '.'}"`;
                     }
                 } else {
-                    if (app === 'chrome') {
-                        cmd = `start chrome "${url || 'http://localhost:3000'}"`;
+                    if (app === 'chrome' || /mixpanel|mxpnl/i.test(String(url || '') + String(app || ''))) {
+                        res.writeHead(403, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: false, error: 'Blocked: do not open Mixpanel or Chrome' }));
+                        return;
                     } else if (app === 'terminal') {
                         cmd = `start cmd .`;
                     } else {
@@ -421,7 +425,7 @@ server.listen(PORT, () => {
     // Auto-launch dashboard on macOS
     try {
         const { exec } = require('child_process');
-        exec(`open http://localhost:${PORT}`);
+        console.log('Browser auto-open disabled. Use http://localhost:' + PORT);
     } catch (e) {}
 });
 EOF
